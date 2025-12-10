@@ -1,5 +1,5 @@
-import { Room, Guest, MaintenanceTicket, Staff, Transaction } from '../types';
-import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS } from '../constants';
+import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory } from '../types';
+import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
 
 const STORAGE_KEYS = {
   ROOMS: 'staysync_rooms',
@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   MAINTENANCE: 'staysync_maintenance',
   STAFF: 'staysync_staff',
   TRANSACTIONS: 'staysync_transactions',
+  HISTORY: 'staysync_history',
 };
 
 export const StorageService = {
@@ -35,6 +36,19 @@ export const StorageService = {
   },
   saveGuests: (guests: Guest[]) => {
     localStorage.setItem(STORAGE_KEYS.GUESTS, JSON.stringify(guests));
+  },
+
+  // History
+  getHistory: (): BookingHistory[] => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.HISTORY);
+      return stored ? JSON.parse(stored) : MOCK_HISTORY;
+    } catch (e) {
+      return MOCK_HISTORY;
+    }
+  },
+  saveHistory: (history: BookingHistory[]) => {
+    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
   },
 
   // Maintenance

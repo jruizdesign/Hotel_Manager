@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import RoomList from './components/RoomList';
+import GuestList from './components/GuestList';
 import Accounting from './components/Accounting';
 import GeminiAssistant from './components/GeminiAssistant';
 import LoginScreen from './components/LoginScreen';
-import { ViewState, RoomStatus, Room, CurrentUser, UserRole } from './types';
+import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest } from './types';
 import { StorageService } from './services/storage';
-import { Users, Wrench, Briefcase } from 'lucide-react';
+import { Wrench, Briefcase } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -19,6 +20,10 @@ const App: React.FC = () => {
   const [maintenance, setMaintenance] = useState(() => StorageService.getMaintenance());
   const [staff, setStaff] = useState(() => StorageService.getStaff());
   const [transactions, setTransactions] = useState(() => StorageService.getTransactions());
+  const [history, setHistory] = useState(() => StorageService.getHistory());
+
+  // Navigation State for External Triggers
+  const [bookingRequest, setBookingRequest] = useState<{ isOpen: boolean, roomNumber?: string }>({ isOpen: false });
 
   // --- Auth & Permission Handlers ---
 
@@ -74,6 +79,55 @@ const App: React.FC = () => {
     StorageService.saveRooms(updatedRooms);
   };
 
+  // Triggered from RoomList
+  const handleBookRoom = (roomNumber: string) => {
+    setView('guests');
+    setBookingRequest({ isOpen: true, roomNumber });
+  };
+
+  const handleAddGuest = (newGuestData: Omit<Guest, 'id'>): boolean => {
+    // Only Manager and Staff can add guests
+    if (currentUser?.role === 'Contractor') return false; 
+
+    // 1. Validate Room Existence
+    const targetRoomIndex = rooms.findIndex(r => r.number === newGuestData.roomNumber);
+    if (targetRoomIndex === -1) {
+      return false; // Room not found
+    }
+
+    const targetRoom = rooms[targetRoomIndex];
+
+    // 2. Validate Room Availability
+    // We require the room to be Available to attach a new guest.
+    if (targetRoom.status !== RoomStatus.AVAILABLE) {
+      return false; // Room not available
+    }
+
+    // 3. Add Guest
+    const newGuest: Guest = {
+      ...newGuestData,
+      id: Date.now().toString(),
+    };
+    
+    const updatedGuests = [...guests, newGuest];
+    setGuests(updatedGuests);
+    StorageService.saveGuests(updatedGuests);
+
+    // 4. Automatically update room status to Occupied if they are Checking In
+    if (newGuestData.status === 'Checked In') {
+      const updatedRooms = [...rooms];
+      updatedRooms[targetRoomIndex] = { 
+        ...targetRoom, 
+        status: RoomStatus.OCCUPIED, 
+        guestId: newGuest.id 
+      };
+      setRooms(updatedRooms);
+      StorageService.saveRooms(updatedRooms);
+    }
+
+    return true;
+  };
+
   // --- Render Logic ---
 
   if (!currentUser) {
@@ -106,6 +160,7 @@ const App: React.FC = () => {
             onStatusChange={handleRoomStatusChange} 
             onAddRoom={handleAddRoom}
             onDeleteRoom={handleDeleteRoom}
+            onBookRoom={handleBookRoom}
             isManager={currentUser.role === 'Manager'}
           />
         );
@@ -115,34 +170,14 @@ const App: React.FC = () => {
       case 'guests':
         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
         return (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-               <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Users /> Guest Directory</h2>
-               <button className="text-sm bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full font-semibold">CRM Active</button>
-            </div>
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase">
-                <tr>
-                  <th className="px-6 py-4">Name</th>
-                  <th className="px-6 py-4">Room</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Check In/Out</th>
-                  <th className="px-6 py-4">VIP</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {guests.map(g => (
-                  <tr key={g.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-medium">{g.name} <br/><span className="text-xs text-slate-400">{g.email}</span></td>
-                    <td className="px-6 py-4">{g.roomNumber}</td>
-                    <td className="px-6 py-4"><span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">{g.status}</span></td>
-                    <td className="px-6 py-4">{g.checkIn} - {g.checkOut}</td>
-                    <td className="px-6 py-4">{g.vip ? '⭐ Yes' : 'No'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <GuestList 
+            guests={guests}
+            history={history}
+            onAddGuest={handleAddGuest} 
+            userRole={currentUser.role}
+            externalBookingRequest={bookingRequest}
+            onClearExternalRequest={() => setBookingRequest({ isOpen: false })}
+          />
         );
       case 'maintenance':
         // Everyone can view maintenance

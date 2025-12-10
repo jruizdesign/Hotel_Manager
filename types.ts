@@ -33,6 +33,18 @@ export interface Guest {
   status: 'Checked In' | 'Reserved' | 'Checked Out';
 }
 
+export interface BookingHistory {
+  id: string;
+  guestId: string;
+  checkIn: string;
+  checkOut: string;
+  roomNumber: string;
+  roomType: RoomType;
+  totalAmount: number;
+  status: 'Completed' | 'Cancelled' | 'No Show';
+  rating?: number;
+}
+
 export interface MaintenanceTicket {
   id: string;
   roomNumber: string;

@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { Room, RoomStatus, RoomType } from '../types';
-import { CheckCircle, XCircle, PenTool, AlertOctagon, Plus, Trash2, X } from 'lucide-react';
+import { CheckCircle, XCircle, PenTool, AlertOctagon, Plus, Trash2, X, CalendarPlus } from 'lucide-react';
 
 interface RoomListProps {
   rooms: Room[];
   onStatusChange: (roomId: string, newStatus: RoomStatus) => void;
   onAddRoom: (room: Omit<Room, 'id' | 'status'>) => void;
   onDeleteRoom: (roomId: string) => void;
+  onBookRoom: (roomNumber: string) => void;
   isManager: boolean;
 }
 
-const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, onDeleteRoom, isManager }) => {
+const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, onDeleteRoom, onBookRoom, isManager }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newRoom, setNewRoom] = useState({
     number: '',
@@ -103,15 +104,26 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
             </div>
 
             {/* Quick Actions */}
-            <select 
-              className="w-full bg-white bg-opacity-50 border border-current rounded p-1.5 text-sm font-medium focus:ring-2 focus:ring-offset-1 focus:ring-current outline-none cursor-pointer"
-              value={room.status}
-              onChange={(e) => onStatusChange(room.id, e.target.value as RoomStatus)}
-            >
-              {Object.values(RoomStatus).map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              <select 
+                className="w-full bg-white bg-opacity-50 border border-current rounded p-1.5 text-sm font-medium focus:ring-2 focus:ring-offset-1 focus:ring-current outline-none cursor-pointer"
+                value={room.status}
+                onChange={(e) => onStatusChange(room.id, e.target.value as RoomStatus)}
+              >
+                {Object.values(RoomStatus).map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+
+              {room.status === RoomStatus.AVAILABLE && (
+                <button
+                  onClick={() => onBookRoom(room.number)}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white p-1.5 rounded text-sm font-medium shadow-sm transition-colors"
+                >
+                  <CalendarPlus size={16} /> Book Now
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

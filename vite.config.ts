@@ -10,6 +10,5 @@ export default defineConfig(({ mode }) => {
     define: {
       // Expose the API_KEY to the client-side code safely
       'process.env.API_KEY': JSON.stringify(env.API_KEY)
-    }
-  };
-});
+  }
+};

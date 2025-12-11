@@ -16,7 +16,7 @@ export const StorageService = {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.ROOMS);
       return stored ? JSON.parse(stored) : MOCK_ROOMS;
-    } catch (e) {
+      console.error('Failed to load rooms from localStorage:', e);
       console.error('Failed to load rooms', e);
       return MOCK_ROOMS;
     }
@@ -29,7 +29,8 @@ export const StorageService = {
   getGuests: (): Guest[] => {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.GUESTS);
-      return stored ? JSON.parse(stored) : MOCK_GUESTS;
+    } catch (e) {
+      console.error('Failed to load guests', e);
     } catch (e) {
       return MOCK_GUESTS;
     }

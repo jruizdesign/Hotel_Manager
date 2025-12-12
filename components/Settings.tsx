@@ -1,0 +1,291 @@
+import React, { useRef, useState, useEffect } from 'react';
+import { StorageService } from '../services/storage';
+import { AppSettings } from '../types';
+import { Trash2, RefreshCw, AlertTriangle, Database, Download, Upload, HardDrive, FileJson, Server, CheckCircle2, XCircle, Globe, Key } from 'lucide-react';
+
+interface SettingsProps {
+  onDataReset: () => void;
+}
+
+const Settings: React.FC<SettingsProps> = ({ onDataReset }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [settings, setSettings] = useState<AppSettings>(StorageService.getSettings());
+  const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleClearAll = () => {
+    if (window.confirm("ARE YOU SURE? This will delete ALL rooms, guests, staff, and transaction data. This cannot be undone.")) {
+      StorageService.clearAllData();
+      onDataReset();
+    }
+  };
+
+  const handleResetToDemo = () => {
+    if (window.confirm("This will overwrite your current data with the initial Demo Data. Continue?")) {
+      StorageService.resetToDemo();
+      onDataReset();
+    }
+  };
+
+  const handleDownloadBackup = () => {
+    try {
+      const backupData = StorageService.exportAllData();
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `staysync_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error("Backup failed", e);
+      alert("Failed to generate backup.");
+    }
+  };
+
+  const handleRestoreClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (window.confirm("WARNING: This will overwrite ALL current data with the backup file. This cannot be undone. Are you sure you want to proceed?")) {
+           StorageService.importData(json);
+           onDataReset(); // Refresh the app state
+           alert("Data restored successfully!");
+        }
+      } catch (err) {
+        alert("Failed to restore data: The file is invalid or corrupted.");
+        console.error(err);
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  // --- API Settings Handlers ---
+  const handleSaveSettings = () => {
+    setIsSaving(true);
+    StorageService.saveSettings(settings);
+    
+    // Simulate a reload delay
+    setTimeout(() => {
+      setIsSaving(false);
+      // Force reload of data
+      onDataReset();
+      alert("Settings saved. Data source updated.");
+    }, 800);
+  };
+
+  const handleTestConnection = async () => {
+    setTestStatus('idle');
+    if (!settings.apiBaseUrl) return;
+    const success = await StorageService.testConnection(settings.apiBaseUrl, settings.apiKey);
+    setTestStatus(success ? 'success' : 'error');
+  };
+
+  return (
+    <div className="space-y-8 max-w-4xl pb-10">
+      <div>
+        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+          <Database className="text-emerald-600" /> System Settings
+        </h2>
+        <p className="text-slate-500 mt-1">Manage application data, backups, and connections.</p>
+      </div>
+
+      {/* API Configuration Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-6 border-b border-slate-200 bg-blue-50/50">
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <Server className="text-blue-600" /> Data Source Configuration
+          </h3>
+          <p className="text-sm text-slate-500 mt-1">
+            Choose where your data is stored. Switch to "Remote" to connect to a backend database.
+          </p>
+        </div>
+        <div className="p-6 space-y-6">
+          {/* Toggle */}
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+            <div>
+              <h4 className="font-bold text-slate-800">Storage Mode</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                {settings.dataSource === 'Local' ? 'Data is stored in your browser cache.' : 'Data is synced with an external server.'}
+              </p>
+            </div>
+            <div className="flex bg-slate-200 p-1 rounded-lg">
+              <button 
+                onClick={() => setSettings({...settings, dataSource: 'Local'})}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Local' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Local Storage
+              </button>
+              <button 
+                onClick={() => setSettings({...settings, dataSource: 'Remote'})}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Remote' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Remote API
+              </button>
+            </div>
+          </div>
+
+          {/* API Form */}
+          {settings.dataSource === 'Remote' && (
+            <div className="space-y-4 border-t border-slate-100 pt-4 animate-in fade-in slide-in-from-top-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700 flex items-center gap-1"><Globe size={14}/> API Base URL</label>
+                  <input 
+                    type="text" 
+                    placeholder="https://api.yourhotel.com/v1"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={settings.apiBaseUrl}
+                    onChange={(e) => setSettings({...settings, apiBaseUrl: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700 flex items-center gap-1"><Key size={14}/> API Key (Header: x-api-key)</label>
+                  <input 
+                    type="password" 
+                    placeholder="••••••••••••"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={settings.apiKey}
+                    onChange={(e) => setSettings({...settings, apiKey: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                 <button 
+                   onClick={handleTestConnection}
+                   disabled={!settings.apiBaseUrl}
+                   className="px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium disabled:opacity-50"
+                 >
+                   Test Connection
+                 </button>
+                 {testStatus === 'success' && <span className="text-sm text-emerald-600 flex items-center gap-1"><CheckCircle2 size={16}/> Connected!</span>}
+                 {testStatus === 'error' && <span className="text-sm text-red-600 flex items-center gap-1"><XCircle size={16}/> Connection Failed</span>}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <button 
+              onClick={handleSaveSettings}
+              disabled={isSaving}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-70"
+            >
+              {isSaving ? 'Saving...' : 'Save Configuration'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Backup & Restore Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-6 border-b border-slate-200 bg-emerald-50/50">
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <HardDrive className="text-emerald-600" /> Backup & Restore
+          </h3>
+          <p className="text-sm text-slate-500 mt-1">
+            Save your data to an external file or cloud drive, or restore from a previous backup.
+          </p>
+        </div>
+        <div className="p-6 space-y-6">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between p-4 bg-white rounded-lg border border-slate-200 shadow-sm">
+            <div>
+              <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                <FileJson size={16} className="text-slate-400" /> Download Backup
+              </h4>
+              <p className="text-sm text-slate-600 mt-1">
+                Creates a JSON file containing all rooms, guests, transactions, and staff data.
+              </p>
+            </div>
+            <button 
+              onClick={handleDownloadBackup}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg font-medium transition-colors shadow-sm whitespace-nowrap"
+            >
+              <Download size={18} /> Download Data
+            </button>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between p-4 bg-white rounded-lg border border-slate-200 shadow-sm">
+            <div>
+              <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                <Upload size={16} className="text-slate-400" /> Restore from File
+              </h4>
+              <p className="text-sm text-slate-600 mt-1">
+                Upload a previously saved .json backup file to restore your system.
+              </p>
+            </div>
+            <div>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept=".json"
+                onChange={handleFileChange}
+              />
+              <button 
+                onClick={handleRestoreClick}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg font-medium transition-colors shadow-sm whitespace-nowrap"
+              >
+                <Upload size={18} /> Select Backup File
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-6 border-b border-slate-200">
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <AlertTriangle className="text-amber-500" /> Danger Zone
+          </h3>
+          <p className="text-sm text-slate-500 mt-1">Irreversible actions regarding your data.</p>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between p-4 bg-red-50/50 rounded-lg border border-red-100">
+            <div>
+              <h4 className="font-bold text-slate-800">Clear All Data (Start Fresh)</h4>
+              <p className="text-sm text-slate-600">
+                Removes all demo data and user entries. Select this if you want to input your own hotel information from scratch.
+              </p>
+            </div>
+            <button 
+              onClick={handleClearAll}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 rounded-lg font-medium transition-colors shadow-sm whitespace-nowrap"
+            >
+              <Trash2 size={18} /> Clear Data
+            </button>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+            <div>
+              <h4 className="font-bold text-slate-800">Reset to Demo Mode</h4>
+              <p className="text-sm text-slate-600">
+                Restores the application to its original state with example rooms, guests, and staff.
+              </p>
+            </div>
+            <button 
+              onClick={handleResetToDemo}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-300 rounded-lg font-medium transition-colors shadow-sm whitespace-nowrap"
+            >
+              <RefreshCw size={18} /> Load Demo Data
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Settings;

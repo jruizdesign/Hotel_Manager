@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewState, UserRole } from '../types';
-import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut } from 'lucide-react';
+import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut, Settings } from 'lucide-react';
 
 interface SidebarProps {
   currentView: ViewState;
@@ -26,7 +26,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
   return (
     <div className="w-64 bg-slate-900 text-white flex flex-col h-full fixed left-0 top-0 shadow-xl z-10">
       <div className="p-6 border-b border-slate-800">
-        <h1 className="text-2xl font-bold flex items-center gap-2 text-emerald-400">
+        <h1 className="text-2xl font-bold text-emerald-400">
           <span className="text-3xl">S</span>taySync
         </h1>
         <div className="flex items-center gap-2 mt-2">
@@ -37,7 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
           }`}>
             {userRole}
           </span>
-          <p className="text-xs text-slate-500">v1.1</p>
+          <p className="text-xs text-slate-500">v1.2</p>
         </div>
       </div>
 
@@ -62,7 +62,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
         })}
       </nav>
 
-      <div className="p-4 border-t border-slate-800">
+      <div className="p-4 border-t border-slate-800 space-y-2">
+         {userRole === 'Manager' && (
+          <button 
+            onClick={() => setView('settings')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              currentView === 'settings' 
+                ? 'bg-emerald-600/20 text-emerald-400' 
+                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Settings size={20} />
+            <span className="font-medium">Settings</span>
+          </button>
+        )}
         <button 
           onClick={onLogout}
           className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-900/20 hover:text-red-300 rounded-lg transition-colors"

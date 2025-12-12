@@ -1,22 +1,27 @@
 import React, { useState } from 'react';
 import { Room, RoomStatus, RoomType } from '../types';
-import { CheckCircle, XCircle, PenTool, AlertOctagon, Plus, Trash2, X, CalendarPlus } from 'lucide-react';
+import { CheckCircle, XCircle, PenTool, AlertOctagon, Plus, Trash2, X, CalendarPlus, Pencil } from 'lucide-react';
 
 interface RoomListProps {
   rooms: Room[];
   onStatusChange: (roomId: string, newStatus: RoomStatus) => void;
   onAddRoom: (room: Omit<Room, 'id' | 'status'>) => void;
+  onUpdateRoom: (room: Room) => void;
   onDeleteRoom: (roomId: string) => void;
   onBookRoom: (roomNumber: string) => void;
   isManager: boolean;
 }
 
-const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, onDeleteRoom, onBookRoom, isManager }) => {
+const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, onUpdateRoom, onDeleteRoom, onBookRoom, isManager }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newRoom, setNewRoom] = useState({
+  const [isEditMode, setIsEditMode] = useState(false);
+  
+  // Form State
+  const [formData, setFormData] = useState<Partial<Room>>({
     number: '',
     type: RoomType.SINGLE,
-    price: 100
+    price: 100,
+    discount: 0
   });
 
   const getStatusColor = (status: RoomStatus) => {
@@ -37,13 +42,33 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
     }
   };
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleOpenAddModal = () => {
+    setIsEditMode(false);
+    setFormData({ number: '', type: RoomType.SINGLE, price: 100, discount: 0 });
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (room: Room) => {
+    setIsEditMode(true);
+    setFormData({ ...room });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRoom.number || !newRoom.price) return;
+    if (!formData.number || !formData.price) return;
+
+    if (isEditMode && formData.id) {
+       onUpdateRoom(formData as Room);
+    } else {
+       onAddRoom(formData as Omit<Room, 'id' | 'status'>);
+    }
     
-    onAddRoom(newRoom);
-    setNewRoom({ number: '', type: RoomType.SINGLE, price: 100 });
     setIsModalOpen(false);
+  };
+
+  const calculateDiscountedPrice = (price: number, discount: number = 0) => {
+    return Math.round(price * (1 - discount / 100));
   };
 
   return (
@@ -51,7 +76,7 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Room Management</h2>
-          <p className="text-sm text-slate-500">Manage availability, pricing, and unit status.</p>
+          <p className="text-sm text-slate-500">Manage availability, pricing, discounts, and unit status.</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <div className="flex gap-2 mr-4">
@@ -63,7 +88,7 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
           </div>
           {isManager && (
             <button 
-              onClick={() => setIsModalOpen(true)}
+              onClick={handleOpenAddModal}
               className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg transition-colors shadow-sm font-medium"
             >
               <Plus size={18} /> Add Room
@@ -75,32 +100,56 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {rooms.map((room) => (
           <div key={room.id} className={`relative p-5 rounded-xl border-2 transition-all hover:shadow-md ${getStatusColor(room.status)}`}>
+            
+            {/* Top Actions: Edit / Delete (Manager Only) */}
             {isManager && (
-              <button 
-                onClick={() => {
-                  if(window.confirm(`Are you sure you want to remove Room ${room.number}?`)) {
-                    onDeleteRoom(room.id);
-                  }
-                }}
-                className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-red-100 hover:text-red-600 text-slate-400 transition-colors"
-                title="Remove Room"
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="absolute top-3 right-3 flex gap-1">
+                <button 
+                  onClick={() => handleOpenEditModal(room)}
+                  className="p-1.5 rounded-full hover:bg-slate-200/50 hover:text-slate-700 text-slate-400 transition-colors"
+                  title="Edit Room"
+                >
+                  <Pencil size={16} />
+                </button>
+                <button 
+                  onClick={() => {
+                    if(window.confirm(`Are you sure you want to remove Room ${room.number}?`)) {
+                      onDeleteRoom(room.id);
+                    }
+                  }}
+                  className="p-1.5 rounded-full hover:bg-red-100 hover:text-red-600 text-slate-400 transition-colors"
+                  title="Remove Room"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             )}
 
-            <div className="flex justify-between items-start mb-3 pr-8">
+            <div className="flex justify-between items-start mb-3 pr-16">
               <span className="text-2xl font-bold">#{room.number}</span>
             </div>
             
-            <div className="flex items-center gap-2 mb-2 opacity-90">
+            <div className="flex items-center gap-2 mb-3 opacity-90">
                {getStatusIcon(room.status)}
                <span className="font-semibold">{room.status}</span>
             </div>
 
-            <div className="flex justify-between items-center mb-4 text-sm opacity-75">
-              <span>{room.type}</span>
-              <span className="font-mono font-bold">${room.price}/n</span>
+            <div className="flex justify-between items-end mb-4">
+              <span className="text-sm font-medium opacity-75">{room.type}</span>
+              
+              <div className="flex flex-col items-end">
+                {room.discount && room.discount > 0 ? (
+                  <>
+                     <span className="text-xs text-red-400 line-through font-medium opacity-75">${room.price}</span>
+                     <div className="flex items-center gap-1">
+                       <span className="font-mono font-bold text-lg text-emerald-700">${calculateDiscountedPrice(room.price, room.discount)}</span>
+                       <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-md font-bold">-{room.discount}%</span>
+                     </div>
+                  </>
+                ) : (
+                   <span className="font-mono font-bold text-lg opacity-80">${room.price}<span className="text-xs font-normal">/n</span></span>
+                )}
+              </div>
             </div>
 
             {/* Quick Actions */}
@@ -128,53 +177,77 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
         ))}
       </div>
 
-      {/* Add Room Modal */}
+      {/* Add / Edit Room Modal */}
       {isModalOpen && isManager && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-800">Add New Room</h3>
+              <h3 className="text-lg font-bold text-slate-800">{isEditMode ? 'Edit Room' : 'Add New Room'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
             </div>
             
-            <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Room Number</label>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="e.g. 305"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
-                  value={newRoom.number}
-                  onChange={e => setNewRoom({...newRoom, number: e.target.value})}
-                />
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Room Number</label>
+                  <input 
+                    type="text" 
+                    required
+                    readOnly={isEditMode}
+                    placeholder="e.g. 305"
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all ${isEditMode ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
+                    value={formData.number}
+                    onChange={e => setFormData({...formData, number: e.target.value})}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Room Type</label>
+                  <select 
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    value={formData.type}
+                    onChange={e => setFormData({...formData, type: e.target.value as RoomType})}
+                  >
+                    {Object.values(RoomType).map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Room Type</label>
-                <select 
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
-                  value={newRoom.type}
-                  onChange={e => setNewRoom({...newRoom, type: e.target.value as RoomType})}
-                >
-                  {Object.values(RoomType).map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Base Price ($)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min="0"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    value={formData.price}
+                    onChange={e => setFormData({...formData, price: Number(e.target.value)})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Discount (%)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    max="100"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    value={formData.discount || 0}
+                    onChange={e => setFormData({...formData, discount: Number(e.target.value)})}
+                  />
+                </div>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nightly Price ($)</label>
-                <input 
-                  type="number" 
-                  required
-                  min="0"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
-                  value={newRoom.price}
-                  onChange={e => setNewRoom({...newRoom, price: Number(e.target.value)})}
-                />
+              
+              {/* Preview */}
+              <div className="bg-slate-50 p-3 rounded-lg flex justify-between items-center text-sm">
+                 <span className="text-slate-500">Final Nightly Rate:</span>
+                 <span className="font-bold text-slate-800 text-lg">
+                   ${calculateDiscountedPrice(formData.price || 0, formData.discount || 0)}
+                 </span>
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -189,7 +262,7 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
                   type="submit"
                   className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium transition-colors shadow-sm"
                 >
-                  Create Room
+                  {isEditMode ? 'Save Changes' : 'Create Room'}
                 </button>
               </div>
             </form>

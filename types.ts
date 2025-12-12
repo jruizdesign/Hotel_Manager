@@ -18,6 +18,7 @@ export interface Room {
   type: RoomType;
   status: RoomStatus;
   price: number;
+  discount?: number; // Percentage discount (0-100)
   guestId?: string; // If occupied
 }
 
@@ -31,6 +32,7 @@ export interface Guest {
   roomNumber: string;
   vip: boolean;
   status: 'Checked In' | 'Reserved' | 'Checked Out';
+  balance: number; // Positive means they owe money, 0 means paid
 }
 
 export interface BookingHistory {
@@ -61,18 +63,20 @@ export interface Staff {
   role: 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
   status: 'On Duty' | 'Off Duty' | 'Break';
   shift: string;
+  pin: string; // Security PIN for login
 }
 
 export interface Transaction {
   id: string;
   date: string;
-  category: 'Room Revenue' | 'F&B' | 'Services' | 'Maintenance Cost' | 'Payroll' | 'Utilities';
+  category: 'Room Revenue' | 'F&B' | 'Services' | 'Maintenance Cost' | 'Payroll' | 'Utilities' | 'Guest Payment';
   amount: number;
   description: string;
   type: 'Income' | 'Expense';
+  guestId?: string; // Optional link to a specific guest
 }
 
-export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting';
+export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'settings';
 
 export type UserRole = 'Manager' | 'Staff' | 'Contractor';
 
@@ -80,4 +84,12 @@ export interface CurrentUser {
   name: string;
   role: UserRole;
   avatarInitials: string;
+}
+
+export type DataSource = 'Local' | 'Remote';
+
+export interface AppSettings {
+  dataSource: DataSource;
+  apiBaseUrl: string;
+  apiKey: string;
 }

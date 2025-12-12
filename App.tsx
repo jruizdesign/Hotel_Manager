@@ -9,6 +9,7 @@ import LoginScreen from './components/LoginScreen';
 import StaffList from './components/StaffList';
 import Settings from './components/Settings';
 import SetupWizard from './components/SetupWizard';
+import MaintenancePanel from './components/MaintenancePanel';
 import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket } from './types';
 import { StorageService } from './services/storage';
 import { Wrench, Loader2 } from 'lucide-react';
@@ -188,6 +189,54 @@ const App: React.FC = () => {
     ]);
   };
 
+  // Maintenance Handlers
+  const handleAddTicket = async (ticketData: Omit<MaintenanceTicket, 'id' | 'status' | 'date'>) => {
+    const newTicket: MaintenanceTicket = {
+      ...ticketData,
+      id: Date.now().toString(),
+      status: 'Pending',
+      date: new Date().toISOString().split('T')[0]
+    };
+    const updatedMaintenance = [newTicket, ...maintenance];
+    setMaintenance(updatedMaintenance);
+    
+    // If associated with a room, potentially mark room as Maintenance? 
+    // For now, we keep it decoupled unless manual room status change.
+    await StorageService.saveMaintenance(updatedMaintenance);
+  };
+
+  const handleResolveTicket = async (ticketId: string, cost: number, note: string) => {
+     const today = new Date().toISOString().split('T')[0];
+     
+     // 1. Update Ticket
+     const updatedMaintenance = maintenance.map(t => 
+       t.id === ticketId 
+         ? { ...t, status: 'Resolved' as const, cost, completedDate: today } 
+         : t
+     );
+     setMaintenance(updatedMaintenance);
+
+     // 2. Create Transaction for Accounting
+     let updatedTransactions = transactions;
+     if (cost > 0) {
+       const newTx: Transaction = {
+         id: `tx-${Date.now()}`,
+         date: today,
+         category: 'Maintenance Cost',
+         type: 'Expense',
+         amount: cost,
+         description: `Ticket #${ticketId} Resolution: ${note}`
+       };
+       updatedTransactions = [newTx, ...transactions];
+       setTransactions(updatedTransactions);
+     }
+
+     await Promise.all([
+       StorageService.saveMaintenance(updatedMaintenance),
+       StorageService.saveTransactions(updatedTransactions)
+     ]);
+  };
+
   // NOTE: This function needs to return boolean for success/fail UI feedback, 
   // but it calls async functions. For simplicity in UI, we update state optimistically 
   // and trigger the save in background.
@@ -340,44 +389,14 @@ const App: React.FC = () => {
           />
         );
       case 'maintenance':
-        // Everyone can view maintenance
         return (
-           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-               <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Wrench /> Maintenance Tickets</h2>
-               {currentUser.role === 'Contractor' && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded">External Access</span>}
-            </div>
-            {maintenance.length === 0 ? (
-               <div className="p-12 text-center text-slate-400">No active maintenance tickets</div>
-            ) : (
-              <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase">
-                  <tr>
-                    <th className="px-6 py-4">Room</th>
-                    <th className="px-6 py-4">Description</th>
-                    <th className="px-6 py-4">Priority</th>
-                    <th className="px-6 py-4">Status</th>
-                    {currentUser.role !== 'Contractor' && <th className="px-6 py-4">Reported By</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {maintenance.map(m => (
-                    <tr key={m.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-4 font-bold">{m.roomNumber}</td>
-                      <td className="px-6 py-4">{m.description}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded text-xs font-semibold ${m.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-slate-100'}`}>
-                          {m.priority}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">{m.status}</td>
-                      {currentUser.role !== 'Contractor' && <td className="px-6 py-4">{m.reportedBy}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <MaintenancePanel 
+            tickets={maintenance}
+            rooms={rooms}
+            userRole={currentUser.role}
+            onAddTicket={handleAddTicket}
+            onResolveTicket={handleResolveTicket}
+          />
         );
       case 'staff':
         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;

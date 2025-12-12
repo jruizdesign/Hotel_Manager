@@ -138,7 +138,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
       </div>
 
       {/* API Configuration Section - Superuser Only */}
-      {userRole === 'Superuser' ? (
+      {userRole === 'Superuser' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden border-l-4 border-l-purple-500">
           <div className="p-6 border-b border-slate-200 bg-purple-50/50">
             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -223,14 +223,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
               </button>
             </div>
           </div>
-        </div>
-      ) : (
-        <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 flex items-center gap-4 text-slate-500">
-           <Lock size={24} className="text-slate-400" />
-           <div>
-             <h3 className="font-bold text-slate-700">Remote Access Configuration Locked</h3>
-             <p className="text-sm">Only Superusers can configure remote data sources.</p>
-           </div>
         </div>
       )}
 

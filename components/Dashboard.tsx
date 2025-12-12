@@ -1,7 +1,7 @@
 import React from 'react';
 import { Room, Guest, MaintenanceTicket, Transaction, RoomStatus } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { DollarSign, BedDouble, Users, AlertTriangle } from 'lucide-react';
+import { DollarSign, BedDouble, Users, AlertTriangle, TrendingDown } from 'lucide-react';
 
 interface DashboardProps {
   rooms: Room[];
@@ -27,8 +27,12 @@ const Dashboard: React.FC<DashboardProps> = ({ rooms, guests, maintenance, trans
     .filter(t => t.type === 'Income')
     .reduce((acc, curr) => acc + curr.amount, 0);
 
+  const totalExpenses = transactions
+    .filter(t => t.type === 'Expense')
+    .reduce((acc, curr) => acc + curr.amount, 0);
+
   const occupiedRooms = rooms.filter(r => r.status === RoomStatus.OCCUPIED).length;
-  const occupancyRate = Math.round((occupiedRooms / rooms.length) * 100);
+  const occupancyRate = rooms.length > 0 ? Math.round((occupiedRooms / rooms.length) * 100) : 0;
   const activeTickets = maintenance.filter(m => m.status !== 'Resolved').length;
 
   // Prepare Chart Data
@@ -52,10 +56,10 @@ const Dashboard: React.FC<DashboardProps> = ({ rooms, guests, maintenance, trans
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Revenue (Oct)" value={`$${totalRevenue.toLocaleString()}`} icon={DollarSign} color="bg-emerald-500" />
+        <StatCard title="Total Revenue" value={`$${totalRevenue.toLocaleString()}`} icon={DollarSign} color="bg-emerald-500" />
+        <StatCard title="Total Expenses" value={`$${totalExpenses.toLocaleString()}`} icon={TrendingDown} color="bg-red-500" />
         <StatCard title="Occupancy Rate" value={`${occupancyRate}%`} icon={BedDouble} color="bg-blue-500" />
-        <StatCard title="Active Guests" value={guests.length} icon={Users} color="bg-indigo-500" />
-        <StatCard title="Maintenance Issues" value={activeTickets} icon={AlertTriangle} color="bg-red-500" />
+        <StatCard title="Active Maintenance" value={activeTickets} icon={AlertTriangle} color="bg-amber-500" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

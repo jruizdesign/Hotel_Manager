@@ -55,6 +55,8 @@ export interface MaintenanceTicket {
   status: 'Pending' | 'In Progress' | 'Resolved';
   reportedBy: string;
   date: string;
+  cost?: number; // Cost of the repair
+  completedDate?: string;
 }
 
 export interface Staff {

@@ -14,7 +14,8 @@ const STORAGE_KEYS = {
 const DEFAULT_SETTINGS: AppSettings = {
   dataSource: 'Local',
   apiBaseUrl: '',
-  apiKey: ''
+  apiKey: '',
+  demoMode: true
 };
 
 // --- Helper for API Calls ---
@@ -73,9 +74,12 @@ export const StorageService = {
     // Local Storage Logic
     try {
       const stored = localStorage.getItem(key);
-      return stored ? JSON.parse(stored) : mockData;
+      if (stored) return JSON.parse(stored);
+      
+      // If no stored data, check demo mode
+      return settings.demoMode ? mockData : ([] as unknown as T);
     } catch {
-      return mockData;
+      return settings.demoMode ? mockData : ([] as unknown as T);
     }
   },
 
@@ -153,10 +157,15 @@ export const StorageService = {
   },
 
   resetToDemo: () => {
-    localStorage.clear();
-    // Re-saving default mock data to ensure state consistency if we are in local mode
-    // In remote mode, this would technically need to clear the remote DB too, which is dangerous
-    // We will only clear local storage here.
+    // We clear storage, forcing the app to fall back to mocks based on default settings logic (or explicitly saving them)
+    // However, since demoMode might be persisted in settings, we should just clear data keys 
+    // AND ensure the `getData` function returns MOCKS because `demoMode` will be true.
+    localStorage.removeItem(STORAGE_KEYS.ROOMS);
+    localStorage.removeItem(STORAGE_KEYS.GUESTS);
+    localStorage.removeItem(STORAGE_KEYS.MAINTENANCE);
+    localStorage.removeItem(STORAGE_KEYS.STAFF);
+    localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
+    localStorage.removeItem(STORAGE_KEYS.HISTORY);
   },
 
   exportAllData: () => {

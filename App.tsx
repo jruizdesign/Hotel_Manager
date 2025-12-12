@@ -8,6 +8,7 @@ import GeminiAssistant from './components/GeminiAssistant';
 import LoginScreen from './components/LoginScreen';
 import StaffList from './components/StaffList';
 import Settings from './components/Settings';
+import SetupWizard from './components/SetupWizard';
 import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket } from './types';
 import { StorageService } from './services/storage';
 import { Wrench, Loader2 } from 'lucide-react';
@@ -138,10 +139,53 @@ const App: React.FC = () => {
     await StorageService.saveRooms(updatedRooms);
   };
 
+  // Setup Wizard Completion
+  const handleSetupComplete = async (newRooms: Omit<Room, 'id' | 'status'>[]) => {
+    const createdRooms: Room[] = newRooms.map((r, idx) => ({
+      ...r,
+      id: `room-${Date.now()}-${idx}`,
+      status: RoomStatus.AVAILABLE
+    }));
+    setRooms(createdRooms);
+    await StorageService.saveRooms(createdRooms);
+  };
+
   // Triggered from RoomList
   const handleBookRoom = (roomNumber: string) => {
     setView('guests');
     setBookingRequest({ isOpen: true, roomNumber });
+  };
+
+  const handleCheckOut = async (roomId: string) => {
+    const room = rooms.find(r => r.id === roomId);
+    if (!room || !room.guestId) return;
+
+    if (!window.confirm(`Confirm Check Out for Room ${room.number}? This will mark the room as Dirty.`)) return;
+
+    // 1. Update Guest Status
+    const todayStr = new Date().toISOString().split('T')[0];
+    let guestUpdated = false;
+    const updatedGuests = guests.map(g => {
+      if (g.id === room.guestId) {
+        guestUpdated = true;
+        return { ...g, status: 'Checked Out' as const, checkOut: todayStr };
+      }
+      return g;
+    });
+
+    // 2. Update Room Status
+    const updatedRooms = rooms.map(r => 
+      r.id === roomId ? { ...r, status: RoomStatus.DIRTY, guestId: undefined } : r
+    );
+
+    // 3. Save State
+    setGuests(updatedGuests);
+    setRooms(updatedRooms);
+
+    await Promise.all([
+      StorageService.saveGuests(updatedGuests),
+      StorageService.saveRooms(updatedRooms)
+    ]);
   };
 
   // NOTE: This function needs to return boolean for success/fail UI feedback, 
@@ -273,6 +317,7 @@ const App: React.FC = () => {
             onUpdateRoom={handleUpdateRoom}
             onDeleteRoom={handleDeleteRoom}
             onBookRoom={handleBookRoom}
+            onCheckOut={handleCheckOut}
             isManager={currentUser.role === 'Manager'}
           />
         );
@@ -386,6 +431,11 @@ const App: React.FC = () => {
       </main>
 
       <GeminiAssistant contextData={aiContext} />
+
+      {/* Setup Wizard Overlay - Only shows if rooms are empty (meaning not in demo and not setup) */}
+      {!isLoading && rooms.length === 0 && currentUser.role === 'Manager' && (
+        <SetupWizard onComplete={handleSetupComplete} />
+      )}
     </div>
   );
 };

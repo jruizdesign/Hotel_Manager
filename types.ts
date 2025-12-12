@@ -92,4 +92,5 @@ export interface AppSettings {
   dataSource: DataSource;
   apiBaseUrl: string;
   apiKey: string;
+  demoMode: boolean;
 }

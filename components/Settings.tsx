@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
 import { AppSettings } from '../types';
-import { Trash2, RefreshCw, AlertTriangle, Database, Download, Upload, HardDrive, FileJson, Server, CheckCircle2, XCircle, Globe, Key } from 'lucide-react';
+import { Trash2, RefreshCw, AlertTriangle, Database, Download, Upload, HardDrive, FileJson, Server, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight } from 'lucide-react';
 
 interface SettingsProps {
   onDataReset: () => void;
@@ -13,17 +13,25 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset }) => {
   const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleClearAll = () => {
-    if (window.confirm("ARE YOU SURE? This will delete ALL rooms, guests, staff, and transaction data. This cannot be undone.")) {
-      StorageService.clearAllData();
-      onDataReset();
-    }
-  };
-
-  const handleResetToDemo = () => {
-    if (window.confirm("This will overwrite your current data with the initial Demo Data. Continue?")) {
-      StorageService.resetToDemo();
-      onDataReset();
+  const handleDemoModeToggle = async () => {
+    const newMode = !settings.demoMode;
+    
+    if (newMode) {
+      if (window.confirm("Enable Demo Mode? This will replace your current data with example data.")) {
+        StorageService.resetToDemo();
+        const newSettings = { ...settings, demoMode: true };
+        setSettings(newSettings);
+        StorageService.saveSettings(newSettings);
+        onDataReset();
+      }
+    } else {
+      if (window.confirm("Disable Demo Mode? This will ERASE all demo data so you can set up your own hotel.")) {
+        StorageService.clearAllData();
+        const newSettings = { ...settings, demoMode: false };
+        setSettings(newSettings);
+        StorageService.saveSettings(newSettings);
+        onDataReset();
+      }
     }
   };
 
@@ -98,6 +106,34 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset }) => {
           <Database className="text-emerald-600" /> System Settings
         </h2>
         <p className="text-slate-500 mt-1">Manage application data, backups, and connections.</p>
+      </div>
+
+      {/* Demo Mode Toggle */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-6 border-b border-slate-200 bg-emerald-50/50 flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <RefreshCw className="text-emerald-600" /> Demo Mode
+            </h3>
+            <p className="text-sm text-slate-600 mt-1">
+              Toggle between example data and your live hotel data.
+            </p>
+          </div>
+          <button 
+            onClick={handleDemoModeToggle}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${
+              settings.demoMode 
+                ? 'bg-emerald-600 text-white shadow-md' 
+                : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+            }`}
+          >
+            {settings.demoMode ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+            {settings.demoMode ? 'Demo Mode ON' : 'Demo Mode OFF'}
+          </button>
+        </div>
+        <div className="p-4 bg-slate-50 text-xs text-slate-500">
+          Note: Turning OFF demo mode will clear existing demo data and trigger the setup wizard to create your rooms.
+        </div>
       </div>
 
       {/* API Configuration Section */}
@@ -189,9 +225,9 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset }) => {
 
       {/* Backup & Restore Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-6 border-b border-slate-200 bg-emerald-50/50">
+        <div className="p-6 border-b border-slate-200 bg-slate-50/50">
           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <HardDrive className="text-emerald-600" /> Backup & Restore
+            <HardDrive className="text-slate-600" /> Backup & Restore
           </h3>
           <p className="text-sm text-slate-500 mt-1">
             Save your data to an external file or cloud drive, or restore from a previous backup.
@@ -239,48 +275,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset }) => {
                 <Upload size={18} /> Select Backup File
               </button>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Danger Zone */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-6 border-b border-slate-200">
-          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <AlertTriangle className="text-amber-500" /> Danger Zone
-          </h3>
-          <p className="text-sm text-slate-500 mt-1">Irreversible actions regarding your data.</p>
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between p-4 bg-red-50/50 rounded-lg border border-red-100">
-            <div>
-              <h4 className="font-bold text-slate-800">Clear All Data (Start Fresh)</h4>
-              <p className="text-sm text-slate-600">
-                Removes all demo data and user entries. Select this if you want to input your own hotel information from scratch.
-              </p>
-            </div>
-            <button 
-              onClick={handleClearAll}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 rounded-lg font-medium transition-colors shadow-sm whitespace-nowrap"
-            >
-              <Trash2 size={18} /> Clear Data
-            </button>
-          </div>
-
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
-            <div>
-              <h4 className="font-bold text-slate-800">Reset to Demo Mode</h4>
-              <p className="text-sm text-slate-600">
-                Restores the application to its original state with example rooms, guests, and staff.
-              </p>
-            </div>
-            <button 
-              onClick={handleResetToDemo}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-300 rounded-lg font-medium transition-colors shadow-sm whitespace-nowrap"
-            >
-              <RefreshCw size={18} /> Load Demo Data
-            </button>
           </div>
         </div>
       </div>

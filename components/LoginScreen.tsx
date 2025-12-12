@@ -275,8 +275,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
         )}
       </div>
 
-      <div className="mt-8 text-slate-500 text-xs">
+      <div className="mt-8 text-slate-500 text-xs text-center">
         <p>Protected by StaySync Secure Access</p>
+        <p className="mt-2 opacity-50">© Jason Ruiz with JRuizDesign</p>
       </div>
     </div>
   );

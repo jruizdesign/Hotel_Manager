@@ -83,6 +83,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
           <LogOut size={20} />
           <span className="font-medium">Sign Out</span>
         </button>
+
+        <div className="pt-4 mt-2 text-center border-t border-slate-800/50">
+          <p className="text-[10px] text-slate-600 font-medium tracking-wide">
+            © Jason Ruiz with JRuizDesign
+          </p>
+        </div>
       </div>
     </div>
   );

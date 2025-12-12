@@ -86,7 +86,7 @@ const App: React.FC = () => {
     const newAdmin: Staff = {
       id: Date.now().toString(),
       name,
-      role: 'Manager',
+      role: 'Superuser', // Default the first user to Superuser
       status: 'On Duty',
       shift: 'Any',
       pin
@@ -98,7 +98,7 @@ const App: React.FC = () => {
     // Auto login
     handleLogin({
       name: newAdmin.name,
-      role: 'Manager',
+      role: 'Superuser',
       avatarInitials: newAdmin.name.substring(0, 2).toUpperCase()
     });
   };
@@ -114,7 +114,7 @@ const App: React.FC = () => {
   };
 
   const handleAddRoom = async (newRoomData: Omit<Room, 'id' | 'status'>) => {
-    if (currentUser?.role !== 'Manager') return; 
+    if (currentUser?.role !== 'Manager' && currentUser?.role !== 'Superuser') return; 
     const newRoom: Room = {
       ...newRoomData,
       id: Date.now().toString(),
@@ -126,14 +126,14 @@ const App: React.FC = () => {
   };
 
   const handleUpdateRoom = async (updatedRoom: Room) => {
-    if (currentUser?.role !== 'Manager') return;
+    if (currentUser?.role !== 'Manager' && currentUser?.role !== 'Superuser') return;
     const updatedRooms = rooms.map(r => r.id === updatedRoom.id ? updatedRoom : r);
     setRooms(updatedRooms);
     await StorageService.saveRooms(updatedRooms);
   };
 
   const handleDeleteRoom = async (roomId: string) => {
-    if (currentUser?.role !== 'Manager') return;
+    if (currentUser?.role !== 'Manager' && currentUser?.role !== 'Superuser') return;
     const updatedRooms = rooms.filter(r => r.id !== roomId);
     setRooms(updatedRooms);
     await StorageService.saveRooms(updatedRooms);
@@ -296,9 +296,9 @@ const App: React.FC = () => {
     stats: {
       totalRooms: rooms.length,
       occupied: rooms.filter(r => r.status === RoomStatus.OCCUPIED).length,
-      revenue: currentUser.role === 'Manager' ? transactions.reduce((acc, t) => t.type === 'Income' ? acc + t.amount : acc, 0) : 'Restricted'
+      revenue: (currentUser.role === 'Manager' || currentUser.role === 'Superuser') ? transactions.reduce((acc, t) => t.type === 'Income' ? acc + t.amount : acc, 0) : 'Restricted'
     },
-    recentTransactions: currentUser.role === 'Manager' ? transactions.slice(0, 5) : [],
+    recentTransactions: (currentUser.role === 'Manager' || currentUser.role === 'Superuser') ? transactions.slice(0, 5) : [],
     maintenanceIssues: maintenance.filter(m => m.status !== 'Resolved')
   };
 
@@ -318,11 +318,11 @@ const App: React.FC = () => {
             onDeleteRoom={handleDeleteRoom}
             onBookRoom={handleBookRoom}
             onCheckOut={handleCheckOut}
-            isManager={currentUser.role === 'Manager'}
+            isManager={currentUser.role === 'Manager' || currentUser.role === 'Superuser'}
           />
         );
       case 'accounting':
-        if (currentUser.role !== 'Manager') return <div className="p-4 text-slate-500">Access Denied</div>;
+        if (currentUser.role !== 'Manager' && currentUser.role !== 'Superuser') return <div className="p-4 text-slate-500">Access Denied</div>;
         return <Accounting transactions={transactions} />;
       case 'guests':
         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
@@ -390,8 +390,8 @@ const App: React.FC = () => {
           />
         );
       case 'settings':
-        if (currentUser.role !== 'Manager') return <div className="p-4 text-slate-500">Access Denied</div>;
-        return <Settings onDataReset={handleDataReset} />;
+        if (currentUser.role !== 'Manager' && currentUser.role !== 'Superuser') return <div className="p-4 text-slate-500">Access Denied</div>;
+        return <Settings onDataReset={handleDataReset} userRole={currentUser.role} />;
       default:
         return <div>View not implemented</div>;
     }
@@ -433,7 +433,7 @@ const App: React.FC = () => {
       <GeminiAssistant contextData={aiContext} />
 
       {/* Setup Wizard Overlay - Only shows if rooms are empty (meaning not in demo and not setup) */}
-      {!isLoading && rooms.length === 0 && currentUser.role === 'Manager' && (
+      {!isLoading && rooms.length === 0 && (currentUser.role === 'Manager' || currentUser.role === 'Superuser') && (
         <SetupWizard onComplete={handleSetupComplete} />
       )}
     </div>

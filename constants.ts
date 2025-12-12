@@ -31,6 +31,7 @@ export const MOCK_MAINTENANCE: MaintenanceTicket[] = [
 ];
 
 export const MOCK_STAFF: Staff[] = [
+  { id: 's0', name: 'Jason Ruiz', role: 'Superuser', status: 'On Duty', shift: 'Always', pin: '0000' },
   { id: 's1', name: 'Sarah Connor', role: 'Manager', status: 'On Duty', shift: 'Morning', pin: '1234' },
   { id: 's2', name: 'John Doe', role: 'Reception', status: 'On Duty', shift: 'Morning', pin: '0000' },
   { id: 's3', name: 'Jane Roe', role: 'Housekeeping', status: 'Break', shift: 'Morning', pin: '1111' },

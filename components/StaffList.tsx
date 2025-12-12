@@ -54,6 +54,7 @@ const StaffList: React.FC<StaffListProps> = ({ staff, onAddStaff, onDeleteStaff,
 
               <div className="flex items-center gap-4">
                 <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl text-white ${
+                  s.role === 'Superuser' ? 'bg-purple-600' :
                   s.role === 'Manager' ? 'bg-purple-500' :
                   s.role === 'Maintenance' ? 'bg-amber-500' :
                   s.role === 'Housekeeping' ? 'bg-blue-500' : 'bg-emerald-500'
@@ -133,6 +134,7 @@ const StaffList: React.FC<StaffListProps> = ({ staff, onAddStaff, onDeleteStaff,
                   <option value="Housekeeping">Housekeeping</option>
                   <option value="Maintenance">Maintenance</option>
                   <option value="Manager">Manager</option>
+                  <option value="Superuser">Superuser</option>
                 </select>
               </div>
 

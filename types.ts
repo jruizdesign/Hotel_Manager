@@ -60,7 +60,7 @@ export interface MaintenanceTicket {
 export interface Staff {
   id: string;
   name: string;
-  role: 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
+  role: 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
   status: 'On Duty' | 'Off Duty' | 'Break';
   shift: string;
   pin: string; // Security PIN for login
@@ -78,7 +78,7 @@ export interface Transaction {
 
 export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'settings';
 
-export type UserRole = 'Manager' | 'Staff' | 'Contractor';
+export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 
 export interface CurrentUser {
   name: string;

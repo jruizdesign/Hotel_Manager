@@ -1,13 +1,14 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
-import { AppSettings } from '../types';
-import { Trash2, RefreshCw, AlertTriangle, Database, Download, Upload, HardDrive, FileJson, Server, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight } from 'lucide-react';
+import { AppSettings, UserRole } from '../types';
+import { Trash2, RefreshCw, AlertTriangle, Database, Download, Upload, HardDrive, FileJson, Server, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight, Lock } from 'lucide-react';
 
 interface SettingsProps {
   onDataReset: () => void;
+  userRole: UserRole;
 }
 
-const Settings: React.FC<SettingsProps> = ({ onDataReset }) => {
+const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [settings, setSettings] = useState<AppSettings>(StorageService.getSettings());
   const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -136,92 +137,102 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset }) => {
         </div>
       </div>
 
-      {/* API Configuration Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-6 border-b border-slate-200 bg-blue-50/50">
-          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <Server className="text-blue-600" /> Data Source Configuration
-          </h3>
-          <p className="text-sm text-slate-500 mt-1">
-            Choose where your data is stored. Switch to "Remote" to connect to a backend database.
-          </p>
-        </div>
-        <div className="p-6 space-y-6">
-          {/* Toggle */}
-          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
-            <div>
-              <h4 className="font-bold text-slate-800">Storage Mode</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                {settings.dataSource === 'Local' ? 'Data is stored in your browser cache.' : 'Data is synced with an external server.'}
-              </p>
+      {/* API Configuration Section - Superuser Only */}
+      {userRole === 'Superuser' ? (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden border-l-4 border-l-purple-500">
+          <div className="p-6 border-b border-slate-200 bg-purple-50/50">
+            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Server className="text-purple-600" /> Data Source Configuration
+            </h3>
+            <p className="text-sm text-slate-500 mt-1">
+              Superuser Access: Configure remote database connection.
+            </p>
+          </div>
+          <div className="p-6 space-y-6">
+            {/* Toggle */}
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div>
+                <h4 className="font-bold text-slate-800">Storage Mode</h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  {settings.dataSource === 'Local' ? 'Data is stored in your browser cache.' : 'Data is synced with an external server.'}
+                </p>
+              </div>
+              <div className="flex bg-slate-200 p-1 rounded-lg">
+                <button 
+                  onClick={() => setSettings({...settings, dataSource: 'Local'})}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Local' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  Local Storage
+                </button>
+                <button 
+                  onClick={() => setSettings({...settings, dataSource: 'Remote'})}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Remote' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  Remote API
+                </button>
+              </div>
             </div>
-            <div className="flex bg-slate-200 p-1 rounded-lg">
+
+            {/* API Form */}
+            {settings.dataSource === 'Remote' && (
+              <div className="space-y-4 border-t border-slate-100 pt-4 animate-in fade-in slide-in-from-top-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-slate-700 flex items-center gap-1"><Globe size={14}/> API Base URL</label>
+                    <input 
+                      type="text" 
+                      placeholder="https://api.yourhotel.com/v1"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                      value={settings.apiBaseUrl}
+                      onChange={(e) => setSettings({...settings, apiBaseUrl: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-slate-700 flex items-center gap-1"><Key size={14}/> API Key (Header: x-api-key)</label>
+                    <input 
+                      type="password" 
+                      placeholder="••••••••••••"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                      value={settings.apiKey}
+                      onChange={(e) => setSettings({...settings, apiKey: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                   <button 
+                     onClick={handleTestConnection}
+                     disabled={!settings.apiBaseUrl}
+                     className="px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium disabled:opacity-50"
+                   >
+                     Test Connection
+                   </button>
+                   {testStatus === 'success' && <span className="text-sm text-emerald-600 flex items-center gap-1"><CheckCircle2 size={16}/> Connected!</span>}
+                   {testStatus === 'error' && <span className="text-sm text-red-600 flex items-center gap-1"><XCircle size={16}/> Connection Failed</span>}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
               <button 
-                onClick={() => setSettings({...settings, dataSource: 'Local'})}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Local' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                onClick={handleSaveSettings}
+                disabled={isSaving}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-70"
               >
-                Local Storage
-              </button>
-              <button 
-                onClick={() => setSettings({...settings, dataSource: 'Remote'})}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Remote' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                Remote API
+                {isSaving ? 'Saving...' : 'Save Configuration'}
               </button>
             </div>
           </div>
-
-          {/* API Form */}
-          {settings.dataSource === 'Remote' && (
-            <div className="space-y-4 border-t border-slate-100 pt-4 animate-in fade-in slide-in-from-top-2">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700 flex items-center gap-1"><Globe size={14}/> API Base URL</label>
-                  <input 
-                    type="text" 
-                    placeholder="https://api.yourhotel.com/v1"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={settings.apiBaseUrl}
-                    onChange={(e) => setSettings({...settings, apiBaseUrl: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700 flex items-center gap-1"><Key size={14}/> API Key (Header: x-api-key)</label>
-                  <input 
-                    type="password" 
-                    placeholder="••••••••••••"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={settings.apiKey}
-                    onChange={(e) => setSettings({...settings, apiKey: e.target.value})}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                 <button 
-                   onClick={handleTestConnection}
-                   disabled={!settings.apiBaseUrl}
-                   className="px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium disabled:opacity-50"
-                 >
-                   Test Connection
-                 </button>
-                 {testStatus === 'success' && <span className="text-sm text-emerald-600 flex items-center gap-1"><CheckCircle2 size={16}/> Connected!</span>}
-                 {testStatus === 'error' && <span className="text-sm text-red-600 flex items-center gap-1"><XCircle size={16}/> Connection Failed</span>}
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end pt-2">
-            <button 
-              onClick={handleSaveSettings}
-              disabled={isSaving}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-70"
-            >
-              {isSaving ? 'Saving...' : 'Save Configuration'}
-            </button>
-          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 flex items-center gap-4 text-slate-500">
+           <Lock size={24} className="text-slate-400" />
+           <div>
+             <h3 className="font-bold text-slate-700">Remote Access Configuration Locked</h3>
+             <p className="text-sm">Only Superusers can configure remote data sources.</p>
+           </div>
+        </div>
+      )}
 
       {/* Backup & Restore Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">

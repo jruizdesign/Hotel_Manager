@@ -52,7 +52,9 @@
       "target": "dmg"
     },
     "linux": {
-      "target": "AppImage"
+      "target": ["deb", "AppImage"],
+      "category": "Office",
+      "maintainer": "StaySync"
     }
   }
 }

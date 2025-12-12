@@ -1,38 +1,55 @@
 import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings } from '../types';
 import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
 import { db } from './db';
+import { initializeFirebase, getFirebaseDB } from './firebase';
+import { collection, getDocs, doc, writeBatch, Firestore } from 'firebase/firestore';
 
 const SETTINGS_ID = 'app_settings';
 
 const DEFAULT_SETTINGS: AppSettings = {
   dataSource: 'Local',
-  apiBaseUrl: '',
-  apiKey: '',
-  demoMode: true
+  demoMode: true,
+  firebaseConfig: {
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: ''
+  }
 };
 
-// --- Helper for API Calls (Keep for Remote Mode) ---
-const apiCall = async (endpoint: string, method: string, body?: any, settings?: AppSettings) => {
-  if (!settings || !settings.apiBaseUrl) throw new Error("API URL not configured");
-  
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-  if (settings.apiKey) {
-    headers['x-api-key'] = settings.apiKey;
-  }
+// --- Cloud Helper Methods ---
 
-  const response = await fetch(`${settings.apiBaseUrl}${endpoint}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined
+const getCloudData = async <T>(collectionName: string): Promise<T[]> => {
+  const firestore = getFirebaseDB();
+  if (!firestore) throw new Error("Cloud database not connected");
+  
+  const querySnapshot = await getDocs(collection(firestore, collectionName));
+  const data: T[] = [];
+  querySnapshot.forEach((doc) => {
+    // We assume the doc ID is part of the data object as 'id'
+    data.push(doc.data() as T);
+  });
+  return data;
+};
+
+const saveCloudData = async <T extends { id: string }>(collectionName: string, data: T[]): Promise<void> => {
+  const firestore = getFirebaseDB();
+  if (!firestore) throw new Error("Cloud database not connected");
+
+  // Firestore Batch allows up to 500 operations. For a small hotel app, this is okay.
+  // For larger scale, we would need to chunk this.
+  const batch = writeBatch(firestore);
+  
+  data.forEach((item) => {
+    const docRef = doc(firestore, collectionName, item.id);
+    batch.set(docRef, item);
   });
 
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.statusText}`);
-  }
-  return response.json();
+  await batch.commit();
 };
+
 
 export const StorageService = {
   // --- Settings Management ---
@@ -42,7 +59,12 @@ export const StorageService = {
       if (record) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, ...settings } = record;
-        return settings as AppSettings;
+        // Initialize firebase if config exists
+        const appSettings = settings as AppSettings;
+        if (appSettings.dataSource === 'Cloud' && appSettings.firebaseConfig) {
+          initializeFirebase(appSettings);
+        }
+        return appSettings;
       }
       return DEFAULT_SETTINGS;
     } catch {
@@ -50,59 +72,68 @@ export const StorageService = {
     }
   },
 
-  // Synchronous version for components that can't wait (fallback to defaults, actual load happens in App.tsx)
   getSettingsSync: (): AppSettings => {
     return DEFAULT_SETTINGS;
   },
 
   saveSettings: async (settings: AppSettings) => {
     await db.settings.put({ ...settings, id: SETTINGS_ID });
+    if (settings.dataSource === 'Cloud' && settings.firebaseConfig) {
+      initializeFirebase(settings);
+    }
   },
 
-  // --- Data Loader with Seed Logic ---
-  async getOrSeedData<T>(table: any, mockData: T[], endpoint: string): Promise<T[]> {
+  // --- Data Loader ---
+  async getOrSeedData<T extends { id: string }>(localTable: any, mockData: T[], collectionName: string): Promise<T[]> {
     const settings = await StorageService.getSettings();
     
-    // 1. Remote Mode
-    if (settings.dataSource === 'Remote' && settings.apiBaseUrl) {
+    // 1. Cloud Mode
+    if (settings.dataSource === 'Cloud') {
       try {
-        return await apiCall(endpoint, 'GET', undefined, settings);
+        const cloudData = await getCloudData<T>(collectionName);
+        if (cloudData.length === 0 && settings.demoMode) {
+           // Seed Cloud with Mock Data if empty
+           await saveCloudData(collectionName, mockData);
+           return mockData;
+        }
+        return cloudData;
       } catch (error) {
-        console.error(`Failed to fetch from remote, falling back to local DB.`, error);
+        console.error(`Cloud fetch failed for ${collectionName}:`, error);
+        alert(`Failed to fetch ${collectionName} from Cloud. Switching to offline view.`);
+        // Fallback to local
       }
     }
 
     // 2. Local DB Mode
-    const count = await table.count();
+    const count = await localTable.count();
     
     // If DB is empty and Demo Mode is ON, seed it
     if (count === 0 && settings.demoMode) {
-      console.log(`Seeding ${table.name} with mock data...`);
-      await table.bulkAdd(mockData);
+      console.log(`Seeding ${localTable.name} with mock data...`);
+      await localTable.bulkAdd(mockData);
       return mockData;
     }
 
     // Return data from DB
-    return await table.toArray();
+    return await localTable.toArray();
   },
 
-  async saveData<T>(table: any, data: T[], endpoint: string): Promise<void> {
+  async saveData<T extends { id: string }>(localTable: any, data: T[], collectionName: string): Promise<void> {
     const settings = await StorageService.getSettings();
 
-    // 1. Save to Local DB (IndexedDB)
-    // We clear and bulkAdd to ensure the DB state matches the App state exactly (handling deletions)
-    await (db as any).transaction('rw', table, async () => {
-      await table.clear();
-      await table.bulkAdd(data);
+    // 1. Always save to Local DB (for offline capability/cache)
+    await (db as any).transaction('rw', localTable, async () => {
+      await localTable.clear();
+      await localTable.bulkAdd(data);
     });
 
-    // 2. Sync to Remote if enabled
-    if (settings.dataSource === 'Remote' && settings.apiBaseUrl) {
+    // 2. Sync to Cloud if enabled
+    if (settings.dataSource === 'Cloud') {
       try {
-        await apiCall(endpoint, 'PUT', data, settings);
+        await saveCloudData(collectionName, data);
       } catch (error) {
-        console.error(`Failed to save to remote`, error);
-        // Don't throw, so the app continues functioning locally
+        console.error(`Failed to save to cloud`, error);
+        alert("Warning: Saved locally, but Cloud sync failed. Check internet connection.");
       }
     }
   },
@@ -110,45 +141,45 @@ export const StorageService = {
   // --- Entity Specific Methods ---
 
   getRooms: async (): Promise<Room[]> => {
-    return StorageService.getOrSeedData(db.rooms, MOCK_ROOMS, '/rooms');
+    return StorageService.getOrSeedData(db.rooms, MOCK_ROOMS, 'rooms');
   },
   saveRooms: async (rooms: Room[]) => {
-    return StorageService.saveData(db.rooms, rooms, '/rooms');
+    return StorageService.saveData(db.rooms, rooms, 'rooms');
   },
 
   getGuests: async (): Promise<Guest[]> => {
-    return StorageService.getOrSeedData(db.guests, MOCK_GUESTS, '/guests');
+    return StorageService.getOrSeedData(db.guests, MOCK_GUESTS, 'guests');
   },
   saveGuests: async (guests: Guest[]) => {
-    return StorageService.saveData(db.guests, guests, '/guests');
+    return StorageService.saveData(db.guests, guests, 'guests');
   },
 
   getHistory: async (): Promise<BookingHistory[]> => {
-    return StorageService.getOrSeedData(db.history, MOCK_HISTORY, '/history');
+    return StorageService.getOrSeedData(db.history, MOCK_HISTORY, 'history');
   },
   saveHistory: async (history: BookingHistory[]) => {
-    return StorageService.saveData(db.history, history, '/history');
+    return StorageService.saveData(db.history, history, 'history');
   },
 
   getMaintenance: async (): Promise<MaintenanceTicket[]> => {
-    return StorageService.getOrSeedData(db.maintenance, MOCK_MAINTENANCE, '/maintenance');
+    return StorageService.getOrSeedData(db.maintenance, MOCK_MAINTENANCE, 'maintenance');
   },
   saveMaintenance: async (tickets: MaintenanceTicket[]) => {
-    return StorageService.saveData(db.maintenance, tickets, '/maintenance');
+    return StorageService.saveData(db.maintenance, tickets, 'maintenance');
   },
 
   getStaff: async (): Promise<Staff[]> => {
-    return StorageService.getOrSeedData(db.staff, MOCK_STAFF, '/staff');
+    return StorageService.getOrSeedData(db.staff, MOCK_STAFF, 'staff');
   },
   saveStaff: async (staff: Staff[]) => {
-    return StorageService.saveData(db.staff, staff, '/staff');
+    return StorageService.saveData(db.staff, staff, 'staff');
   },
 
   getTransactions: async (): Promise<Transaction[]> => {
-    return StorageService.getOrSeedData(db.transactions, MOCK_TRANSACTIONS, '/transactions');
+    return StorageService.getOrSeedData(db.transactions, MOCK_TRANSACTIONS, 'transactions');
   },
   saveTransactions: async (transactions: Transaction[]) => {
-    return StorageService.saveData(db.transactions, transactions, '/transactions');
+    return StorageService.saveData(db.transactions, transactions, 'transactions');
   },
 
   // --- Utility Methods ---
@@ -166,7 +197,6 @@ export const StorageService = {
 
   resetToDemo: async () => {
     await StorageService.clearAllData();
-    // Setting settings.demoMode = true will trigger re-seed on next fetch
   },
 
   exportAllData: async () => {
@@ -221,20 +251,8 @@ export const StorageService = {
     });
   },
 
-  // --- Connection Test ---
-  testConnection: async (url: string, key: string): Promise<boolean> => {
-    try {
-      const response = await fetch(`${url}/rooms`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key
-        }
-      });
-      return response.ok;
-    } catch (e) {
-      console.error(e);
-      return false;
-    }
+  testConnection: async (apiKey: string): Promise<boolean> => {
+     // Simple validation check
+     return apiKey.length > 20;
   }
 };

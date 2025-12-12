@@ -1,8 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
 import { db } from '../services/db';
-import { AppSettings, UserRole } from '../types';
-import { RefreshCw, Database, Download, Upload, HardDrive, FileJson, Server, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight, Terminal, Table as TableIcon } from 'lucide-react';
+import { AppSettings, UserRole, FirebaseConfig } from '../types';
+import { RefreshCw, Database, Download, Upload, HardDrive, FileJson, Cloud, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight, Terminal, Table as TableIcon, Flame } from 'lucide-react';
 
 interface SettingsProps {
   onDataReset: () => void;
@@ -13,14 +13,17 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [settings, setSettings] = useState<AppSettings>({
     dataSource: 'Local',
-    apiBaseUrl: '',
-    apiKey: '',
-    demoMode: true
+    demoMode: true,
+    firebaseConfig: {
+      apiKey: '',
+      authDomain: '',
+      projectId: '',
+      storageBucket: '',
+      messagingSenderId: '',
+      appId: ''
+    }
   });
-  const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Database Stats State
   const [dbStats, setDbStats] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -30,6 +33,17 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
 
   const loadSettings = async () => {
     const s = await StorageService.getSettings();
+    // Ensure firebaseConfig object exists
+    if (!s.firebaseConfig) {
+      s.firebaseConfig = {
+        apiKey: '',
+        authDomain: '',
+        projectId: '',
+        storageBucket: '',
+        messagingSenderId: '',
+        appId: ''
+      };
+    }
     setSettings(s);
   };
 
@@ -58,15 +72,10 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
       }
     } else {
       if (window.confirm("Disable Demo Mode? This will ERASE all demo data so you can set up your own hotel.")) {
-        // Critical: Update settings first so StorageService knows we are out of Demo Mode
         const newSettings = { ...settings, demoMode: false };
         setSettings(newSettings);
         await StorageService.saveSettings(newSettings);
-        
-        // Then clear data (which now refers to local/real storage)
         await StorageService.clearAllData();
-        
-        // Finally refresh app state
         await onDataReset();
         loadDbStats();
       }
@@ -104,7 +113,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
         const json = JSON.parse(event.target?.result as string);
         if (window.confirm("WARNING: This will overwrite ALL current data with the backup file. This cannot be undone. Are you sure you want to proceed?")) {
            await StorageService.importData(json);
-           await onDataReset(); // Refresh the app state
+           await onDataReset();
            loadDbStats();
            alert("Data restored successfully!");
         }
@@ -128,25 +137,25 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
     alert("Full database content has been logged to the browser console (Press F12 to view).");
   };
 
-  // --- API Settings Handlers ---
   const handleSaveSettings = async () => {
     setIsSaving(true);
     await StorageService.saveSettings(settings);
     
-    // Simulate a reload delay
     setTimeout(() => {
       setIsSaving(false);
-      // Force reload of data
       onDataReset();
-      alert("Settings saved. Data source updated.");
+      alert("Configuration Saved! You may need to refresh the page for cloud connection to activate.");
     }, 800);
   };
 
-  const handleTestConnection = async () => {
-    setTestStatus('idle');
-    if (!settings.apiBaseUrl) return;
-    const success = await StorageService.testConnection(settings.apiBaseUrl, settings.apiKey);
-    setTestStatus(success ? 'success' : 'error');
+  const updateFirebaseConfig = (key: keyof FirebaseConfig, value: string) => {
+    setSettings(prev => ({
+      ...prev,
+      firebaseConfig: {
+        ...prev.firebaseConfig!,
+        [key]: value
+      }
+    }));
   };
 
   return (
@@ -165,7 +174,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                <TableIcon size={20} className="text-blue-600" /> Database Status
              </h3>
-             <p className="text-sm text-slate-500">Overview of local IndexedDB tables.</p>
+             <p className="text-sm text-slate-500">Overview of local cache.</p>
            </div>
            <button 
              onClick={handleLogToConsole}
@@ -183,12 +192,134 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
                    <span className="text-[10px] text-slate-400">records</span>
                 </div>
               ))}
-              {Object.keys(dbStats).length === 0 && (
-                <div className="col-span-full text-center text-slate-400 italic">Connecting to database...</div>
-              )}
            </div>
         </div>
       </div>
+
+      {/* Cloud Configuration Section */}
+      {userRole === 'Superuser' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden border-l-4 border-l-orange-500">
+          <div className="p-6 border-b border-slate-200 bg-orange-50/50">
+            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Cloud className="text-orange-600" /> Cloud Sync (Firebase)
+            </h3>
+            <p className="text-sm text-slate-500 mt-1">
+              Connect to Google Firebase to access your data from any device.
+            </p>
+          </div>
+          <div className="p-6 space-y-6">
+            {/* Toggle */}
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div>
+                <h4 className="font-bold text-slate-800">Storage Location</h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  {settings.dataSource === 'Local' 
+                    ? 'Data stored ONLY on this device (IndexedDB).' 
+                    : 'Data stored in Cloud Firestore (Requires Config).'}
+                </p>
+              </div>
+              <div className="flex bg-slate-200 p-1 rounded-lg">
+                <button 
+                  onClick={() => setSettings({...settings, dataSource: 'Local'})}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Local' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  This Device Only
+                </button>
+                <button 
+                  onClick={() => setSettings({...settings, dataSource: 'Cloud'})}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Cloud' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  Cloud Sync
+                </button>
+              </div>
+            </div>
+
+            {/* Cloud Config Form */}
+            {settings.dataSource === 'Cloud' && (
+              <div className="space-y-4 border-t border-slate-100 pt-4 animate-in fade-in slide-in-from-top-2">
+                <div className="bg-blue-50 text-blue-800 p-4 rounded-lg text-sm mb-4">
+                   <strong>How to set up:</strong>
+                   <ol className="list-decimal ml-4 mt-2 space-y-1">
+                     <li>Go to <a href="https://console.firebase.google.com" target="_blank" className="underline font-bold">console.firebase.google.com</a></li>
+                     <li>Create a new project (e.g., "MyHotelApp").</li>
+                     <li>Go to "Firestore Database" and Create Database (Start in <strong>Test Mode</strong>).</li>
+                     <li>Go to Project Settings, scroll down to "Your apps", and select the Web icon (&lt;/&gt;).</li>
+                     <li>Copy the configuration values and paste them below.</li>
+                   </ol>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">API Key</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                      value={settings.firebaseConfig?.apiKey}
+                      onChange={(e) => updateFirebaseConfig('apiKey', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Auth Domain</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                      value={settings.firebaseConfig?.authDomain}
+                      onChange={(e) => updateFirebaseConfig('authDomain', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Project ID</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                      value={settings.firebaseConfig?.projectId}
+                      onChange={(e) => updateFirebaseConfig('projectId', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Storage Bucket</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                      value={settings.firebaseConfig?.storageBucket}
+                      onChange={(e) => updateFirebaseConfig('storageBucket', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Messaging Sender ID</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                      value={settings.firebaseConfig?.messagingSenderId}
+                      onChange={(e) => updateFirebaseConfig('messagingSenderId', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">App ID</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                      value={settings.firebaseConfig?.appId}
+                      onChange={(e) => updateFirebaseConfig('appId', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button 
+                onClick={handleSaveSettings}
+                disabled={isSaving}
+                className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-70 flex items-center gap-2"
+              >
+                {isSaving ? <RefreshCw className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
+                Save Configuration
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Demo Mode Toggle */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -213,99 +344,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
             {settings.demoMode ? 'Demo Mode ON' : 'Demo Mode OFF'}
           </button>
         </div>
-        <div className="p-4 bg-slate-50 text-xs text-slate-500">
-          Note: Turning OFF demo mode will clear existing demo data and trigger the setup wizard to create your rooms.
-        </div>
       </div>
-
-      {/* API Configuration Section - Superuser Only */}
-      {userRole === 'Superuser' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden border-l-4 border-l-purple-500">
-          <div className="p-6 border-b border-slate-200 bg-purple-50/50">
-            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Server className="text-purple-600" /> Data Source Configuration
-            </h3>
-            <p className="text-sm text-slate-500 mt-1">
-              Superuser Access: Configure remote database connection.
-            </p>
-          </div>
-          <div className="p-6 space-y-6">
-            {/* Toggle */}
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
-              <div>
-                <h4 className="font-bold text-slate-800">Storage Mode</h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  {settings.dataSource === 'Local' ? 'Data is stored in your browser cache (IndexedDB).' : 'Data is synced with an external server.'}
-                </p>
-              </div>
-              <div className="flex bg-slate-200 p-1 rounded-lg">
-                <button 
-                  onClick={() => setSettings({...settings, dataSource: 'Local'})}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Local' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Local Storage
-                </button>
-                <button 
-                  onClick={() => setSettings({...settings, dataSource: 'Remote'})}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${settings.dataSource === 'Remote' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Remote API
-                </button>
-              </div>
-            </div>
-
-            {/* API Form */}
-            {settings.dataSource === 'Remote' && (
-              <div className="space-y-4 border-t border-slate-100 pt-4 animate-in fade-in slide-in-from-top-2">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-slate-700 flex items-center gap-1"><Globe size={14}/> API Base URL</label>
-                    <input 
-                      type="text" 
-                      placeholder="https://api.yourhotel.com/v1"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                      value={settings.apiBaseUrl}
-                      onChange={(e) => setSettings({...settings, apiBaseUrl: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-slate-700 flex items-center gap-1"><Key size={14}/> API Key (Header: x-api-key)</label>
-                    <input 
-                      type="password" 
-                      placeholder="••••••••••••"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                      value={settings.apiKey}
-                      onChange={(e) => setSettings({...settings, apiKey: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                   <button 
-                     onClick={handleTestConnection}
-                     disabled={!settings.apiBaseUrl}
-                     className="px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium disabled:opacity-50"
-                   >
-                     Test Connection
-                   </button>
-                   {testStatus === 'success' && <span className="text-sm text-emerald-600 flex items-center gap-1"><CheckCircle2 size={16}/> Connected!</span>}
-                   {testStatus === 'error' && <span className="text-sm text-red-600 flex items-center gap-1"><XCircle size={16}/> Connection Failed</span>}
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end pt-2">
-              <button 
-                onClick={handleSaveSettings}
-                disabled={isSaving}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-70"
-              >
-                {isSaving ? 'Saving...' : 'Save Configuration'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Backup & Restore Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -314,7 +353,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
             <HardDrive className="text-slate-600" /> Backup & Restore
           </h3>
           <p className="text-sm text-slate-500 mt-1">
-            Save your data to an external file or cloud drive, or restore from a previous backup.
+            Manual backups are still recommended even when using Cloud Sync.
           </p>
         </div>
         <div className="p-6 space-y-6">
@@ -324,7 +363,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
                 <FileJson size={16} className="text-slate-400" /> Download Backup
               </h4>
               <p className="text-sm text-slate-600 mt-1">
-                Creates a JSON file containing all rooms, guests, transactions, and staff data.
+                Creates a JSON file containing all data from the current source.
               </p>
             </div>
             <button 
@@ -341,7 +380,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
                 <Upload size={16} className="text-slate-400" /> Restore from File
               </h4>
               <p className="text-sm text-slate-600 mt-1">
-                Upload a previously saved .json backup file to restore your system.
+                Import a JSON file. This will overwrite the current database.
               </p>
             </div>
             <div>

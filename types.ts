@@ -1,3 +1,4 @@
+
 export enum RoomStatus {
   AVAILABLE = 'Available',
   OCCUPIED = 'Occupied',
@@ -88,11 +89,22 @@ export interface CurrentUser {
   avatarInitials: string;
 }
 
-export type DataSource = 'Local' | 'Remote';
+export type DataSource = 'Local' | 'Cloud';
+
+export interface FirebaseConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+}
 
 export interface AppSettings {
   dataSource: DataSource;
-  apiBaseUrl: string;
-  apiKey: string;
   demoMode: boolean;
+  firebaseConfig?: FirebaseConfig;
+  // Legacy
+  apiBaseUrl?: string;
+  apiKey?: string;
 }

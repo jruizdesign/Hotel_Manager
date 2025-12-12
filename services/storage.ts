@@ -1,15 +1,8 @@
 import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings } from '../types';
 import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
+import { db } from './db';
 
-const STORAGE_KEYS = {
-  ROOMS: 'staysync_rooms',
-  GUESTS: 'staysync_guests',
-  MAINTENANCE: 'staysync_maintenance',
-  STAFF: 'staysync_staff',
-  TRANSACTIONS: 'staysync_transactions',
-  HISTORY: 'staysync_history',
-  SETTINGS: 'staysync_settings'
-};
+const SETTINGS_ID = 'app_settings';
 
 const DEFAULT_SETTINGS: AppSettings = {
   dataSource: 'Local',
@@ -18,7 +11,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   demoMode: true
 };
 
-// --- Helper for API Calls ---
+// --- Helper for API Calls (Keep for Remote Mode) ---
 const apiCall = async (endpoint: string, method: string, body?: any, settings?: AppSettings) => {
   if (!settings || !settings.apiBaseUrl) throw new Error("API URL not configured");
   
@@ -43,60 +36,73 @@ const apiCall = async (endpoint: string, method: string, body?: any, settings?: 
 
 export const StorageService = {
   // --- Settings Management ---
-  getSettings: (): AppSettings => {
+  getSettings: async (): Promise<AppSettings> => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      return stored ? JSON.parse(stored) : DEFAULT_SETTINGS;
+      const record = await db.settings.get(SETTINGS_ID);
+      if (record) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id, ...settings } = record;
+        return settings as AppSettings;
+      }
+      return DEFAULT_SETTINGS;
     } catch {
       return DEFAULT_SETTINGS;
     }
   },
 
-  saveSettings: (settings: AppSettings) => {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+  // Synchronous version for components that can't wait (fallback to defaults, actual load happens in App.tsx)
+  getSettingsSync: (): AppSettings => {
+    return DEFAULT_SETTINGS;
   },
 
-  // --- Generic Data Handler ---
-  // This helps us switch between Local and Remote easily
-  async getData<T>(key: string, mockData: T, endpoint: string): Promise<T> {
-    const settings = StorageService.getSettings();
+  saveSettings: async (settings: AppSettings) => {
+    await db.settings.put({ ...settings, id: SETTINGS_ID });
+  },
+
+  // --- Data Loader with Seed Logic ---
+  async getOrSeedData<T>(table: any, mockData: T[], endpoint: string): Promise<T[]> {
+    const settings = await StorageService.getSettings();
     
+    // 1. Remote Mode
     if (settings.dataSource === 'Remote' && settings.apiBaseUrl) {
       try {
         return await apiCall(endpoint, 'GET', undefined, settings);
       } catch (error) {
-        console.error(`Failed to fetch ${key} from remote, falling back to local cache if available.`, error);
-        // Fallback logic could go here, for now we throw or return empty
-        // In a robust app, we might return cached local data with a "offline" warning
+        console.error(`Failed to fetch from remote, falling back to local DB.`, error);
       }
     }
 
-    // Local Storage Logic
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored) return JSON.parse(stored);
-      
-      // If no stored data, check demo mode
-      return settings.demoMode ? mockData : ([] as unknown as T);
-    } catch {
-      return settings.demoMode ? mockData : ([] as unknown as T);
+    // 2. Local DB Mode
+    const count = await table.count();
+    
+    // If DB is empty and Demo Mode is ON, seed it
+    if (count === 0 && settings.demoMode) {
+      console.log(`Seeding ${table.name} with mock data...`);
+      await table.bulkAdd(mockData);
+      return mockData;
     }
+
+    // Return data from DB
+    return await table.toArray();
   },
 
-  async saveData<T>(key: string, data: T, endpoint: string): Promise<void> {
-    const settings = StorageService.getSettings();
+  async saveData<T>(table: any, data: T[], endpoint: string): Promise<void> {
+    const settings = await StorageService.getSettings();
 
-    // Always save to local storage as backup/cache
-    localStorage.setItem(key, JSON.stringify(data));
+    // 1. Save to Local DB (IndexedDB)
+    // We clear and bulkAdd to ensure the DB state matches the App state exactly (handling deletions)
+    await (db as any).transaction('rw', table, async () => {
+      await table.clear();
+      await table.bulkAdd(data);
+    });
 
+    // 2. Sync to Remote if enabled
     if (settings.dataSource === 'Remote' && settings.apiBaseUrl) {
       try {
-        // We assume the backend accepts a full list PUT for synchronization in this simple implementation
-        // A real backend would likely take individual POST/PATCH updates
         await apiCall(endpoint, 'PUT', data, settings);
       } catch (error) {
-        console.error(`Failed to save ${key} to remote`, error);
-        throw error; 
+        console.error(`Failed to save to remote`, error);
+        // Don't throw, so the app continues functioning locally
       }
     }
   },
@@ -104,102 +110,120 @@ export const StorageService = {
   // --- Entity Specific Methods ---
 
   getRooms: async (): Promise<Room[]> => {
-    return StorageService.getData(STORAGE_KEYS.ROOMS, MOCK_ROOMS, '/rooms');
+    return StorageService.getOrSeedData(db.rooms, MOCK_ROOMS, '/rooms');
   },
   saveRooms: async (rooms: Room[]) => {
-    return StorageService.saveData(STORAGE_KEYS.ROOMS, rooms, '/rooms');
+    return StorageService.saveData(db.rooms, rooms, '/rooms');
   },
 
   getGuests: async (): Promise<Guest[]> => {
-    return StorageService.getData(STORAGE_KEYS.GUESTS, MOCK_GUESTS, '/guests');
+    return StorageService.getOrSeedData(db.guests, MOCK_GUESTS, '/guests');
   },
   saveGuests: async (guests: Guest[]) => {
-    return StorageService.saveData(STORAGE_KEYS.GUESTS, guests, '/guests');
+    return StorageService.saveData(db.guests, guests, '/guests');
   },
 
   getHistory: async (): Promise<BookingHistory[]> => {
-    return StorageService.getData(STORAGE_KEYS.HISTORY, MOCK_HISTORY, '/history');
+    return StorageService.getOrSeedData(db.history, MOCK_HISTORY, '/history');
   },
   saveHistory: async (history: BookingHistory[]) => {
-    return StorageService.saveData(STORAGE_KEYS.HISTORY, history, '/history');
+    return StorageService.saveData(db.history, history, '/history');
   },
 
   getMaintenance: async (): Promise<MaintenanceTicket[]> => {
-    return StorageService.getData(STORAGE_KEYS.MAINTENANCE, MOCK_MAINTENANCE, '/maintenance');
+    return StorageService.getOrSeedData(db.maintenance, MOCK_MAINTENANCE, '/maintenance');
   },
   saveMaintenance: async (tickets: MaintenanceTicket[]) => {
-    return StorageService.saveData(STORAGE_KEYS.MAINTENANCE, tickets, '/maintenance');
+    return StorageService.saveData(db.maintenance, tickets, '/maintenance');
   },
 
   getStaff: async (): Promise<Staff[]> => {
-    return StorageService.getData(STORAGE_KEYS.STAFF, MOCK_STAFF, '/staff');
+    return StorageService.getOrSeedData(db.staff, MOCK_STAFF, '/staff');
   },
   saveStaff: async (staff: Staff[]) => {
-    return StorageService.saveData(STORAGE_KEYS.STAFF, staff, '/staff');
+    return StorageService.saveData(db.staff, staff, '/staff');
   },
 
   getTransactions: async (): Promise<Transaction[]> => {
-    return StorageService.getData(STORAGE_KEYS.TRANSACTIONS, MOCK_TRANSACTIONS, '/transactions');
+    return StorageService.getOrSeedData(db.transactions, MOCK_TRANSACTIONS, '/transactions');
   },
   saveTransactions: async (transactions: Transaction[]) => {
-    return StorageService.saveData(STORAGE_KEYS.TRANSACTIONS, transactions, '/transactions');
+    return StorageService.saveData(db.transactions, transactions, '/transactions');
   },
 
   // --- Utility Methods ---
 
-  clearAllData: () => {
-    localStorage.setItem(STORAGE_KEYS.ROOMS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.GUESTS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.MAINTENANCE, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify([]));
+  clearAllData: async () => {
+    await Promise.all([
+      db.rooms.clear(),
+      db.guests.clear(),
+      db.maintenance.clear(),
+      db.staff.clear(),
+      db.transactions.clear(),
+      db.history.clear()
+    ]);
   },
 
-  resetToDemo: () => {
-    // We clear storage, forcing the app to fall back to mocks based on default settings logic (or explicitly saving them)
-    // However, since demoMode might be persisted in settings, we should just clear data keys 
-    // AND ensure the `getData` function returns MOCKS because `demoMode` will be true.
-    localStorage.removeItem(STORAGE_KEYS.ROOMS);
-    localStorage.removeItem(STORAGE_KEYS.GUESTS);
-    localStorage.removeItem(STORAGE_KEYS.MAINTENANCE);
-    localStorage.removeItem(STORAGE_KEYS.STAFF);
-    localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-    localStorage.removeItem(STORAGE_KEYS.HISTORY);
+  resetToDemo: async () => {
+    await StorageService.clearAllData();
+    // Setting settings.demoMode = true will trigger re-seed on next fetch
   },
 
-  exportAllData: () => {
-    const data: Record<string, any> = {};
-    Object.values(STORAGE_KEYS).forEach(key => {
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        data[key] = JSON.parse(stored);
-      }
-    });
+  exportAllData: async () => {
+    const [rooms, guests, maintenance, staff, transactions, history] = await Promise.all([
+      db.rooms.toArray(),
+      db.guests.toArray(),
+      db.maintenance.toArray(),
+      db.staff.toArray(),
+      db.transactions.toArray(),
+      db.history.toArray()
+    ]);
+
     return {
       version: '1.0',
       timestamp: new Date().toISOString(),
-      data
+      data: {
+        staysync_rooms: rooms,
+        staysync_guests: guests,
+        staysync_maintenance: maintenance,
+        staysync_staff: staff,
+        staysync_transactions: transactions,
+        staysync_history: history
+      }
     };
   },
 
-  importData: (backupData: any) => {
+  importData: async (backupData: any) => {
     if (!backupData || !backupData.data) {
       throw new Error("Invalid backup file format");
     }
     
     const data = backupData.data;
-    Object.values(STORAGE_KEYS).forEach(key => {
-      if (data[key]) {
-        localStorage.setItem(key, JSON.stringify(data[key]));
-      }
+    
+    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.transactions, db.history, async () => {
+      await db.rooms.clear();
+      if (data.staysync_rooms) await db.rooms.bulkAdd(data.staysync_rooms);
+      
+      await db.guests.clear();
+      if (data.staysync_guests) await db.guests.bulkAdd(data.staysync_guests);
+      
+      await db.maintenance.clear();
+      if (data.staysync_maintenance) await db.maintenance.bulkAdd(data.staysync_maintenance);
+      
+      await db.staff.clear();
+      if (data.staysync_staff) await db.staff.bulkAdd(data.staysync_staff);
+      
+      await db.transactions.clear();
+      if (data.staysync_transactions) await db.transactions.bulkAdd(data.staysync_transactions);
+
+      await db.history.clear();
+      if (data.staysync_history) await db.history.bulkAdd(data.staysync_history);
     });
   },
 
   // --- Connection Test ---
   testConnection: async (url: string, key: string): Promise<boolean> => {
     try {
-      // Try to fetch rooms as a test
       const response = await fetch(`${url}/rooms`, {
         method: 'GET',
         headers: {

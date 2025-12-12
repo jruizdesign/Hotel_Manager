@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
+import { db } from '../services/db';
 import { AppSettings, UserRole } from '../types';
-import { Trash2, RefreshCw, AlertTriangle, Database, Download, Upload, HardDrive, FileJson, Server, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight, Lock } from 'lucide-react';
+import { RefreshCw, Database, Download, Upload, HardDrive, FileJson, Server, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight, Terminal, Table as TableIcon } from 'lucide-react';
 
 interface SettingsProps {
   onDataReset: () => void;
@@ -10,40 +11,71 @@ interface SettingsProps {
 
 const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [settings, setSettings] = useState<AppSettings>(StorageService.getSettings());
+  const [settings, setSettings] = useState<AppSettings>({
+    dataSource: 'Local',
+    apiBaseUrl: '',
+    apiKey: '',
+    demoMode: true
+  });
   const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Database Stats State
+  const [dbStats, setDbStats] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    loadSettings();
+    loadDbStats();
+  }, []);
+
+  const loadSettings = async () => {
+    const s = await StorageService.getSettings();
+    setSettings(s);
+  };
+
+  const loadDbStats = async () => {
+    const stats: Record<string, number> = {};
+    if (db.isOpen()) {
+        for (const table of db.tables) {
+            stats[table.name] = await table.count();
+        }
+    }
+    setDbStats(stats);
+  };
 
   const handleDemoModeToggle = async () => {
     const newMode = !settings.demoMode;
     
     if (newMode) {
       if (window.confirm("Enable Demo Mode? This will replace your current data with example data.")) {
-        StorageService.resetToDemo();
+        await StorageService.resetToDemo();
         const newSettings = { ...settings, demoMode: true };
         setSettings(newSettings);
-        StorageService.saveSettings(newSettings);
-        onDataReset();
+        await StorageService.saveSettings(newSettings);
+        
+        await onDataReset();
+        loadDbStats();
       }
     } else {
       if (window.confirm("Disable Demo Mode? This will ERASE all demo data so you can set up your own hotel.")) {
         // Critical: Update settings first so StorageService knows we are out of Demo Mode
         const newSettings = { ...settings, demoMode: false };
         setSettings(newSettings);
-        StorageService.saveSettings(newSettings);
+        await StorageService.saveSettings(newSettings);
         
         // Then clear data (which now refers to local/real storage)
-        StorageService.clearAllData();
+        await StorageService.clearAllData();
         
         // Finally refresh app state
-        onDataReset();
+        await onDataReset();
+        loadDbStats();
       }
     }
   };
 
-  const handleDownloadBackup = () => {
+  const handleDownloadBackup = async () => {
     try {
-      const backupData = StorageService.exportAllData();
+      const backupData = await StorageService.exportAllData();
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -67,12 +99,13 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
         if (window.confirm("WARNING: This will overwrite ALL current data with the backup file. This cannot be undone. Are you sure you want to proceed?")) {
-           StorageService.importData(json);
-           onDataReset(); // Refresh the app state
+           await StorageService.importData(json);
+           await onDataReset(); // Refresh the app state
+           loadDbStats();
            alert("Data restored successfully!");
         }
       } catch (err) {
@@ -84,10 +117,21 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
     reader.readAsText(file);
   };
 
+  const handleLogToConsole = async () => {
+    const allData: any = {};
+    for (const table of db.tables) {
+      allData[table.name] = await table.toArray();
+    }
+    console.group("StaySync Database Dump");
+    console.log(allData);
+    console.groupEnd();
+    alert("Full database content has been logged to the browser console (Press F12 to view).");
+  };
+
   // --- API Settings Handlers ---
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
     setIsSaving(true);
-    StorageService.saveSettings(settings);
+    await StorageService.saveSettings(settings);
     
     // Simulate a reload delay
     setTimeout(() => {
@@ -112,6 +156,38 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
           <Database className="text-emerald-600" /> System Settings
         </h2>
         <p className="text-slate-500 mt-1">Manage application data, backups, and connections.</p>
+      </div>
+
+      {/* Database Status Panel */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-6 border-b border-slate-200 bg-slate-50/80 flex justify-between items-center">
+           <div>
+             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+               <TableIcon size={20} className="text-blue-600" /> Database Status
+             </h3>
+             <p className="text-sm text-slate-500">Overview of local IndexedDB tables.</p>
+           </div>
+           <button 
+             onClick={handleLogToConsole}
+             className="text-xs flex items-center gap-2 bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-900 transition-colors"
+           >
+             <Terminal size={14} /> Log Data to Console
+           </button>
+        </div>
+        <div className="p-6">
+           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Object.entries(dbStats).map(([table, count]) => (
+                <div key={table} className="bg-slate-50 border border-slate-100 p-3 rounded-lg flex flex-col items-center justify-center">
+                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{table}</span>
+                   <span className="text-2xl font-bold text-slate-700">{count}</span>
+                   <span className="text-[10px] text-slate-400">records</span>
+                </div>
+              ))}
+              {Object.keys(dbStats).length === 0 && (
+                <div className="col-span-full text-center text-slate-400 italic">Connecting to database...</div>
+              )}
+           </div>
+        </div>
       </div>
 
       {/* Demo Mode Toggle */}
@@ -159,7 +235,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
               <div>
                 <h4 className="font-bold text-slate-800">Storage Mode</h4>
                 <p className="text-xs text-slate-500 mt-1">
-                  {settings.dataSource === 'Local' ? 'Data is stored in your browser cache.' : 'Data is synced with an external server.'}
+                  {settings.dataSource === 'Local' ? 'Data is stored in your browser cache (IndexedDB).' : 'Data is synced with an external server.'}
                 </p>
               </div>
               <div className="flex bg-slate-200 p-1 rounded-lg">

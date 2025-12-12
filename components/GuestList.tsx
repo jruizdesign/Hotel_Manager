@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Guest, UserRole, BookingHistory, Room, Transaction } from '../types';
-import { Users, Plus, X, Search, Calendar, Star, AlertCircle, History, Clock, UserCheck, UserPlus, Receipt, DollarSign, CheckCircle2, Pencil } from 'lucide-react';
+import { Users, Plus, X, Search, Calendar, Star, AlertCircle, History, Clock, UserCheck, UserPlus, Receipt, DollarSign, CheckCircle2 } from 'lucide-react';
 
 interface GuestListProps {
   guests: Guest[];
@@ -8,7 +8,6 @@ interface GuestListProps {
   transactions: Transaction[]; // Needed for history
   history?: BookingHistory[];
   onAddGuest: (guest: Omit<Guest, 'id'>) => boolean;
-  onUpdateGuest: (guest: Guest) => void;
   onAddPayment: (guestId: string, amount: number, date: string, note: string) => void;
   userRole: UserRole;
   externalBookingRequest?: {
@@ -24,23 +23,20 @@ const GuestList: React.FC<GuestListProps> = ({
   transactions,
   history = [], 
   onAddGuest, 
-  onUpdateGuest,
   onAddPayment,
   userRole, 
   externalBookingRequest, 
   onClearExternalRequest 
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingGuestId, setEditingGuestId] = useState<string | null>(null);
-
   const [billingGuest, setBillingGuest] = useState<Guest | null>(null); // For billing modal
   const [historyGuest, setHistoryGuest] = useState<Guest | null>(null); // For history modal
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isReturningUser, setIsReturningUser] = useState(false);
   
-  // New/Edit Guest Form State
-  const [formData, setFormData] = useState<Omit<Guest, 'id'>>({
+  // New Guest Form State
+  const [newGuest, setNewGuest] = useState<Omit<Guest, 'id'>>({
     name: '',
     email: '',
     phone: '',
@@ -60,49 +56,14 @@ const GuestList: React.FC<GuestListProps> = ({
   // Handle external triggers
   useEffect(() => {
     if (externalBookingRequest?.isOpen) {
-      resetForm();
       setIsModalOpen(true);
       setError(null);
       if (externalBookingRequest.roomNumber) {
-        setFormData(prev => ({ ...prev, roomNumber: externalBookingRequest.roomNumber || '' }));
+        setNewGuest(prev => ({ ...prev, roomNumber: externalBookingRequest.roomNumber || '' }));
       }
       if (onClearExternalRequest) onClearExternalRequest();
     }
   }, [externalBookingRequest, onClearExternalRequest]);
-
-  const resetForm = () => {
-    setEditingGuestId(null);
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      roomNumber: '',
-      checkIn: '',
-      checkOut: '',
-      vip: false,
-      status: 'Reserved',
-      balance: 0
-    });
-    setIsReturningUser(false);
-    setError(null);
-  };
-
-  const handleEditClick = (guest: Guest) => {
-    setEditingGuestId(guest.id);
-    setFormData({
-      name: guest.name,
-      email: guest.email,
-      phone: guest.phone,
-      roomNumber: guest.roomNumber,
-      checkIn: guest.checkIn,
-      checkOut: guest.checkOut,
-      vip: guest.vip,
-      status: guest.status,
-      balance: guest.balance
-    });
-    setIsModalOpen(true);
-    setIsReturningUser(false);
-  };
 
   const filteredGuests = guests.filter(guest => 
     guest.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -127,6 +88,7 @@ const GuestList: React.FC<GuestListProps> = ({
     }
 
     // 2. Calculate nights stayed (CheckIn vs Current Date)
+    // For simplicity in this demo, we calculate nights from CheckIn to Today (or CheckOut if earlier)
     const checkIn = new Date(guest.checkIn);
     const checkOut = new Date(guest.checkOut);
     const today = new Date();
@@ -154,22 +116,23 @@ const GuestList: React.FC<GuestListProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (editingGuestId) {
-      // Update existing guest
-      const updatedGuest: Guest = { ...formData, id: editingGuestId };
-      onUpdateGuest(updatedGuest);
+    const success = onAddGuest(newGuest);
+    if (success) {
       setIsModalOpen(false);
-      resetForm();
+      setNewGuest({
+        name: '',
+        email: '',
+        phone: '',
+        roomNumber: '',
+        checkIn: '',
+        checkOut: '',
+        vip: false,
+        status: 'Reserved',
+        balance: 0
+      });
+      setIsReturningUser(false);
     } else {
-      // Create new guest
-      const success = onAddGuest(formData);
-      if (success) {
-        setIsModalOpen(false);
-        resetForm();
-      } else {
-        setError(`Room ${formData.roomNumber} is currently unavailable or does not exist.`);
-      }
+      setError(`Room ${newGuest.roomNumber} is currently unavailable or does not exist.`);
     }
   };
 
@@ -182,6 +145,11 @@ const GuestList: React.FC<GuestListProps> = ({
     // Reset form
     setPaymentAmount('');
     setPaymentNote('');
+    
+    // Re-fetch guest data to update modal? No, we need to update the local billingGuest object to reflect change immediately visually
+    // However, since billingGuest is a copy, we should close or update it. 
+    // The App state updates, but `billingGuest` in state is stale.
+    // Let's rely on the props update. We will find the updated guest from `guests` prop.
   };
 
   // Get the up-to-date billing guest object from the main list
@@ -190,9 +158,14 @@ const GuestList: React.FC<GuestListProps> = ({
   // Calculate specific billing numbers for the modal
   const accruedAmount = activeBillingGuest ? calculateAccruedCharges(activeBillingGuest) : 0;
   const totalPaid = activeBillingGuest ? calculateTotalPaid(activeBillingGuest.id) : 0;
+  
+  // Dynamic Balance: Accrued - Paid. 
+  // Note: The `guest.balance` in `types.ts` is useful for persistent storage, 
+  // but recalculating here ensures we see live accruals based on dates.
+  // Let's display the `accruedAmount - totalPaid` as the "Live Balance".
   const liveBalance = accruedAmount - totalPaid;
 
-  const canEdit = userRole === 'Manager' || userRole === 'Staff' || userRole === 'Superuser';
+  const canEdit = userRole === 'Manager' || userRole === 'Staff';
 
   return (
     <div className="space-y-6">
@@ -218,7 +191,7 @@ const GuestList: React.FC<GuestListProps> = ({
           </div>
           {canEdit && (
             <button 
-              onClick={() => { resetForm(); setIsModalOpen(true); }}
+              onClick={() => { setIsModalOpen(true); setError(null); setIsReturningUser(false); }}
               className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
             >
               <Plus size={18} /> <span className="hidden sm:inline">Add Booking</span>
@@ -284,21 +257,12 @@ const GuestList: React.FC<GuestListProps> = ({
                       </td>
                       <td className="px-6 py-4 text-center flex items-center justify-center gap-2">
                          {canEdit && (
-                           <>
-                              <button 
-                                onClick={() => handleEditClick(g)}
-                                className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                title="Edit Guest Details"
-                              >
-                                <Pencil size={18} />
-                              </button>
-                              <button 
-                                onClick={() => setBillingGuest(g)}
-                                className="flex items-center gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
-                              >
-                                <DollarSign size={14} /> Bill
-                              </button>
-                           </>
+                            <button 
+                              onClick={() => setBillingGuest(g)}
+                              className="flex items-center gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                            >
+                              <DollarSign size={14} /> Bill
+                            </button>
                          )}
                         <button 
                           onClick={() => setHistoryGuest(g)}
@@ -511,34 +475,32 @@ const GuestList: React.FC<GuestListProps> = ({
         </div>
       )}
 
-      {/* Add / Edit Booking Modal */}
+      {/* Add Booking Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-800">{editingGuestId ? 'Edit Booking' : 'New Booking'}</h3>
+              <h3 className="text-lg font-bold text-slate-800">New Booking</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
             </div>
 
-            {/* User Type Toggle (Only for New Booking) */}
-            {!editingGuestId && (
-              <div className="px-6 pt-4 pb-0 flex gap-4 border-b border-slate-100">
-                 <button 
-                   onClick={() => setIsReturningUser(false)}
-                   className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${!isReturningUser ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                 >
-                   <UserPlus size={16} /> New Guest
-                 </button>
-                 <button 
-                   onClick={() => setIsReturningUser(true)}
-                   className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${isReturningUser ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                 >
-                   <UserCheck size={16} /> Returning Guest
-                 </button>
-              </div>
-            )}
+            {/* User Type Toggle */}
+            <div className="px-6 pt-4 pb-0 flex gap-4 border-b border-slate-100">
+               <button 
+                 onClick={() => setIsReturningUser(false)}
+                 className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${!isReturningUser ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+               >
+                 <UserPlus size={16} /> New Guest
+               </button>
+               <button 
+                 onClick={() => setIsReturningUser(true)}
+                 className={`pb-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${isReturningUser ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+               >
+                 <UserCheck size={16} /> Returning Guest
+               </button>
+            </div>
             
             <form onSubmit={handleSubmit} className="p-6">
               {error && (
@@ -558,8 +520,8 @@ const GuestList: React.FC<GuestListProps> = ({
                       type="text" required
                       readOnly={isReturningUser}
                       className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none ${isReturningUser ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
-                      value={formData.name}
-                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      value={newGuest.name}
+                      onChange={e => setNewGuest({...newGuest, name: e.target.value})}
                     />
                   </div>
                   <div>
@@ -568,8 +530,8 @@ const GuestList: React.FC<GuestListProps> = ({
                       type="email" required
                       readOnly={isReturningUser}
                       className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none ${isReturningUser ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
-                      value={formData.email}
-                      onChange={e => setFormData({...formData, email: e.target.value})}
+                      value={newGuest.email}
+                      onChange={e => setNewGuest({...newGuest, email: e.target.value})}
                     />
                   </div>
                   <div>
@@ -578,8 +540,8 @@ const GuestList: React.FC<GuestListProps> = ({
                       type="tel" required
                       readOnly={isReturningUser}
                       className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none ${isReturningUser ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
-                      value={formData.phone}
-                      onChange={e => setFormData({...formData, phone: e.target.value})}
+                      value={newGuest.phone}
+                      onChange={e => setNewGuest({...newGuest, phone: e.target.value})}
                     />
                   </div>
                 </div>
@@ -593,8 +555,8 @@ const GuestList: React.FC<GuestListProps> = ({
                       type="text" required
                       placeholder="e.g. 101"
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
-                      value={formData.roomNumber}
-                      onChange={e => setFormData({...formData, roomNumber: e.target.value})}
+                      value={newGuest.roomNumber}
+                      onChange={e => setNewGuest({...newGuest, roomNumber: e.target.value})}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -603,8 +565,8 @@ const GuestList: React.FC<GuestListProps> = ({
                       <input 
                         type="date" required
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
-                        value={formData.checkIn}
-                        onChange={e => setFormData({...formData, checkIn: e.target.value})}
+                        value={newGuest.checkIn}
+                        onChange={e => setNewGuest({...newGuest, checkIn: e.target.value})}
                       />
                     </div>
                     <div>
@@ -612,8 +574,8 @@ const GuestList: React.FC<GuestListProps> = ({
                       <input 
                         type="date" required
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
-                        value={formData.checkOut}
-                        onChange={e => setFormData({...formData, checkOut: e.target.value})}
+                        value={newGuest.checkOut}
+                        onChange={e => setNewGuest({...newGuest, checkOut: e.target.value})}
                       />
                     </div>
                   </div>
@@ -623,8 +585,8 @@ const GuestList: React.FC<GuestListProps> = ({
                        <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
                        <select 
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
-                          value={formData.status}
-                          onChange={e => setFormData({...formData, status: e.target.value as any})}
+                          value={newGuest.status}
+                          onChange={e => setNewGuest({...newGuest, status: e.target.value as any})}
                        >
                          <option value="Reserved">Reserved</option>
                          <option value="Checked In">Checked In</option>
@@ -635,8 +597,8 @@ const GuestList: React.FC<GuestListProps> = ({
                         <input 
                           type="checkbox" 
                           className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500 border-gray-300"
-                          checked={formData.vip}
-                          onChange={e => setFormData({...formData, vip: e.target.checked})}
+                          checked={newGuest.vip}
+                          onChange={e => setNewGuest({...newGuest, vip: e.target.checked})}
                           disabled={isReturningUser}
                         />
                         <span className={`text-sm font-medium ${isReturningUser ? 'text-slate-400' : 'text-slate-700'}`}>Mark as VIP</span>
@@ -658,7 +620,7 @@ const GuestList: React.FC<GuestListProps> = ({
                   type="submit"
                   className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium transition-colors shadow-sm"
                 >
-                  {editingGuestId ? 'Save Changes' : 'Complete Booking'}
+                  Complete Booking
                 </button>
               </div>
             </form>

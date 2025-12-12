@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Room, RoomStatus, RoomType } from '../types';
-import { CheckCircle, XCircle, PenTool, AlertOctagon, Plus, Trash2, X, CalendarPlus, Pencil, LogOut } from 'lucide-react';
+import { CheckCircle, XCircle, PenTool, AlertOctagon, Plus, Trash2, X, CalendarPlus, Pencil } from 'lucide-react';
 
 interface RoomListProps {
   rooms: Room[];
@@ -9,11 +9,10 @@ interface RoomListProps {
   onUpdateRoom: (room: Room) => void;
   onDeleteRoom: (roomId: string) => void;
   onBookRoom: (roomNumber: string) => void;
-  onCheckOut: (roomId: string) => void;
   isManager: boolean;
 }
 
-const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, onUpdateRoom, onDeleteRoom, onBookRoom, onCheckOut, isManager }) => {
+const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, onUpdateRoom, onDeleteRoom, onBookRoom, isManager }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   
@@ -171,15 +170,6 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
                   className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white p-1.5 rounded text-sm font-medium shadow-sm transition-colors"
                 >
                   <CalendarPlus size={16} /> Book Now
-                </button>
-              )}
-
-              {room.status === RoomStatus.OCCUPIED && (
-                <button
-                  onClick={() => onCheckOut(room.id)}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white p-1.5 rounded text-sm font-medium shadow-sm transition-colors"
-                >
-                  <LogOut size={16} /> Check Out
                 </button>
               )}
             </div>

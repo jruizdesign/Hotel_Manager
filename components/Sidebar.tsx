@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewState, UserRole } from '../types';
-import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut, Settings } from 'lucide-react';
+import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut, Settings, ShieldCheck } from 'lucide-react';
 
 interface SidebarProps {
   currentView: ViewState;
@@ -12,12 +12,12 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLogout }) => {
   // Define all possible items
   const allNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Manager', 'Staff'] },
-    { id: 'rooms', label: 'Rooms', icon: BedDouble, roles: ['Manager', 'Staff'] },
-    { id: 'guests', label: 'Guests', icon: Users, roles: ['Manager', 'Staff'] },
-    { id: 'maintenance', label: 'Maintenance', icon: Wrench, roles: ['Manager', 'Staff', 'Contractor'] },
-    { id: 'staff', label: 'Staff', icon: Briefcase, roles: ['Manager', 'Staff'] },
-    { id: 'accounting', label: 'Accounting', icon: DollarSign, roles: ['Manager'] },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Superuser', 'Manager', 'Staff'] },
+    { id: 'rooms', label: 'Rooms', icon: BedDouble, roles: ['Superuser', 'Manager', 'Staff'] },
+    { id: 'guests', label: 'Guests', icon: Users, roles: ['Superuser', 'Manager', 'Staff'] },
+    { id: 'maintenance', label: 'Maintenance', icon: Wrench, roles: ['Superuser', 'Manager', 'Staff', 'Contractor'] },
+    { id: 'staff', label: 'Staff', icon: Briefcase, roles: ['Superuser', 'Manager', 'Staff'] },
+    { id: 'accounting', label: 'Accounting', icon: DollarSign, roles: ['Superuser', 'Manager'] },
   ];
 
   // Filter based on role
@@ -31,13 +31,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
         </h1>
         <div className="flex items-center gap-2 mt-2">
           <span className={`px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded border ${
+            userRole === 'Superuser' ? 'border-purple-500 text-purple-400 bg-purple-500/10' :
             userRole === 'Manager' ? 'border-emerald-500 text-emerald-400' :
             userRole === 'Staff' ? 'border-blue-500 text-blue-400' :
             'border-amber-500 text-amber-400'
           }`}>
-            {userRole}
+            {userRole === 'Superuser' ? 'System Admin' : userRole}
           </span>
-          <p className="text-xs text-slate-500">v1.2</p>
+          <p className="text-xs text-slate-500">v1.3</p>
         </div>
       </div>
 
@@ -63,7 +64,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
       </nav>
 
       <div className="p-4 border-t border-slate-800 space-y-2">
-         {userRole === 'Manager' && (
+         {(userRole === 'Manager' || userRole === 'Superuser') && (
           <button 
             onClick={() => setView('settings')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
@@ -83,6 +84,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
           <LogOut size={20} />
           <span className="font-medium">Sign Out</span>
         </button>
+
+        <div className="pt-4 mt-2 text-center border-t border-slate-800/50">
+          <p className="text-[10px] text-slate-600 font-medium tracking-wide">
+            © Jason Ruiz with JRuizDesign
+          </p>
+        </div>
       </div>
     </div>
   );

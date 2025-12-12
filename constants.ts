@@ -28,9 +28,11 @@ export const MOCK_HISTORY: BookingHistory[] = [
 export const MOCK_MAINTENANCE: MaintenanceTicket[] = [
   { id: 'm1', roomNumber: '201', description: 'AC unit leaking water', priority: 'High', status: 'In Progress', reportedBy: 'Housekeeping', date: '2023-10-26' },
   { id: 'm2', roomNumber: '103', description: 'TV remote batteries dead', priority: 'Low', status: 'Pending', reportedBy: 'Guest', date: '2023-10-27' },
+  { id: 'm3', roomNumber: 'Pool', description: 'Pump replacement', priority: 'High', status: 'Resolved', reportedBy: 'Mike Fixit', date: '2023-10-20', cost: 1200, completedDate: '2023-10-21' },
 ];
 
 export const MOCK_STAFF: Staff[] = [
+  { id: 's0', name: 'Jason Ruiz', role: 'Superuser', status: 'On Duty', shift: 'Always', pin: '0000' },
   { id: 's1', name: 'Sarah Connor', role: 'Manager', status: 'On Duty', shift: 'Morning', pin: '1234' },
   { id: 's2', name: 'John Doe', role: 'Reception', status: 'On Duty', shift: 'Morning', pin: '0000' },
   { id: 's3', name: 'Jane Roe', role: 'Housekeeping', status: 'Break', shift: 'Morning', pin: '1111' },

@@ -1,3 +1,4 @@
+
 export enum RoomStatus {
   AVAILABLE = 'Available',
   OCCUPIED = 'Occupied',
@@ -55,12 +56,14 @@ export interface MaintenanceTicket {
   status: 'Pending' | 'In Progress' | 'Resolved';
   reportedBy: string;
   date: string;
+  cost?: number; // Cost of the repair
+  completedDate?: string;
 }
 
 export interface Staff {
   id: string;
   name: string;
-  role: 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
+  role: 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
   status: 'On Duty' | 'Off Duty' | 'Break';
   shift: string;
   pin: string; // Security PIN for login
@@ -78,7 +81,7 @@ export interface Transaction {
 
 export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'settings';
 
-export type UserRole = 'Manager' | 'Staff' | 'Contractor';
+export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 
 export interface CurrentUser {
   name: string;
@@ -86,10 +89,22 @@ export interface CurrentUser {
   avatarInitials: string;
 }
 
-export type DataSource = 'Local' | 'Remote';
+export type DataSource = 'Local' | 'Cloud';
+
+export interface FirebaseConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+}
 
 export interface AppSettings {
   dataSource: DataSource;
-  apiBaseUrl: string;
-  apiKey: string;
+  demoMode: boolean;
+  firebaseConfig?: FirebaseConfig;
+  // Legacy
+  apiBaseUrl?: string;
+  apiKey?: string;
 }

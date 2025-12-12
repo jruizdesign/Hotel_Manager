@@ -27,10 +27,15 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
       }
     } else {
       if (window.confirm("Disable Demo Mode? This will ERASE all demo data so you can set up your own hotel.")) {
-        StorageService.clearAllData();
+        // Critical: Update settings first so StorageService knows we are out of Demo Mode
         const newSettings = { ...settings, demoMode: false };
         setSettings(newSettings);
         StorageService.saveSettings(newSettings);
+        
+        // Then clear data (which now refers to local/real storage)
+        StorageService.clearAllData();
+        
+        // Finally refresh app state
         onDataReset();
       }
     }

@@ -274,6 +274,52 @@ const App: React.FC = () => {
     return true;
   };
 
+  const handleUpdateGuest = async (updatedGuest: Guest) => {
+    const oldGuest = guests.find(g => g.id === updatedGuest.id);
+    if (!oldGuest) return;
+
+    // 1. Handle Room Swap if room number changed
+    let currentRooms = [...rooms];
+    if (oldGuest.roomNumber !== updatedGuest.roomNumber) {
+      // Free old room
+      const oldRoomIdx = currentRooms.findIndex(r => r.number === oldGuest.roomNumber);
+      if (oldRoomIdx > -1) {
+        currentRooms[oldRoomIdx] = { ...currentRooms[oldRoomIdx], status: RoomStatus.DIRTY, guestId: undefined };
+      }
+      
+      // Occupy new room
+      const newRoomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
+      if (newRoomIdx > -1) {
+        // Only occupy if we are checking in or already checked in
+        if (updatedGuest.status === 'Checked In') {
+           currentRooms[newRoomIdx] = { ...currentRooms[newRoomIdx], status: RoomStatus.OCCUPIED, guestId: updatedGuest.id };
+        }
+      } else {
+        alert(`Warning: Room ${updatedGuest.roomNumber} does not exist. Guest updated but room status not linked.`);
+      }
+    } else {
+      // Room didn't change, but check if status changed (e.g. Reserved -> Checked In)
+      const roomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
+      if (roomIdx > -1) {
+         if (oldGuest.status === 'Reserved' && updatedGuest.status === 'Checked In') {
+             currentRooms[roomIdx] = { ...currentRooms[roomIdx], status: RoomStatus.OCCUPIED, guestId: updatedGuest.id };
+         }
+      }
+    }
+
+    // 2. Update Guest List
+    const updatedGuests = guests.map(g => g.id === updatedGuest.id ? updatedGuest : g);
+    
+    // 3. Save State
+    setGuests(updatedGuests);
+    setRooms(currentRooms);
+    
+    await Promise.all([
+      StorageService.saveGuests(updatedGuests),
+      StorageService.saveRooms(currentRooms)
+    ]);
+  };
+
   const handleAddPayment = async (guestId: string, amount: number, date: string, note: string) => {
     const newTransaction: Transaction = {
       id: Date.now().toString(),
@@ -381,7 +427,8 @@ const App: React.FC = () => {
             rooms={rooms} // Pass rooms to calculate rates
             transactions={transactions} // Pass transactions to show billing history
             history={history}
-            onAddGuest={handleAddGuest} 
+            onAddGuest={handleAddGuest}
+            onUpdateGuest={handleUpdateGuest}
             onAddPayment={handleAddPayment} // Pass payment handler
             userRole={currentUser.role}
             externalBookingRequest={bookingRequest}

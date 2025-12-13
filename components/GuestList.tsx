@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Guest, UserRole, BookingHistory, Room, Transaction } from '../types';
+import { Guest, UserRole, BookingHistory, Room, Transaction, RoomStatus } from '../types';
 import { Users, Plus, X, Search, Calendar, Star, AlertCircle, History, Clock, UserCheck, UserPlus, Receipt, DollarSign, CheckCircle2, Pencil } from 'lucide-react';
 
 interface GuestListProps {
@@ -168,7 +168,7 @@ const GuestList: React.FC<GuestListProps> = ({
         setIsModalOpen(false);
         resetForm();
       } else {
-        setError(`Room ${formData.roomNumber} is currently unavailable or does not exist.`);
+        setError(`Room ${formData.roomNumber} is currently unavailable (Status must be 'Available').`);
       }
     }
   };
@@ -193,6 +193,13 @@ const GuestList: React.FC<GuestListProps> = ({
   const liveBalance = accruedAmount - totalPaid;
 
   const canEdit = userRole === 'Manager' || userRole === 'Staff' || userRole === 'Superuser';
+
+  // Sort rooms: Available first, then numeric
+  const sortedRooms = [...rooms].sort((a, b) => {
+    if (a.status === RoomStatus.AVAILABLE && b.status !== RoomStatus.AVAILABLE) return -1;
+    if (a.status !== RoomStatus.AVAILABLE && b.status === RoomStatus.AVAILABLE) return 1;
+    return a.number.localeCompare(b.number);
+  });
 
   return (
     <div className="space-y-6">
@@ -589,13 +596,23 @@ const GuestList: React.FC<GuestListProps> = ({
                   <h4 className="font-semibold text-slate-900 border-b pb-2">Booking Details</h4>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Room Number</label>
-                    <input 
-                      type="text" required
-                      placeholder="e.g. 101"
+                    <select 
+                      required
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                       value={formData.roomNumber}
                       onChange={e => setFormData({...formData, roomNumber: e.target.value})}
-                    />
+                    >
+                      <option value="">Select a Room</option>
+                      {sortedRooms.map(room => {
+                         const isAvailable = room.status === RoomStatus.AVAILABLE;
+                         const isCurrent = room.number === formData.roomNumber;
+                         return (
+                           <option key={room.id} value={room.number} disabled={!isAvailable && !isCurrent}>
+                              {room.number} - {room.type} ({room.status}) {!isAvailable && !isCurrent ? '(Unavailable)' : ''}
+                           </option>
+                         )
+                      })}
+                    </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>

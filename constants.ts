@@ -12,9 +12,9 @@ export const MOCK_ROOMS: Room[] = [
 ];
 
 export const MOCK_GUESTS: Guest[] = [
-  { id: 'g1', name: 'Alice Johnson', email: 'alice@example.com', phone: '555-0101', checkIn: '2023-10-25', checkOut: '2023-10-28', roomNumber: '102', vip: false, status: 'Checked In' },
-  { id: 'g2', name: 'Robert Smith', email: 'bob.smith@example.com', phone: '555-0102', checkIn: '2023-10-26', checkOut: '2023-10-30', roomNumber: '202', vip: true, status: 'Checked In' },
-  { id: 'g3', name: 'Charlie Davis', email: 'charlie@example.com', phone: '555-0103', checkIn: '2023-10-28', checkOut: '2023-11-01', roomNumber: '104', vip: false, status: 'Reserved' },
+  { id: 'g1', name: 'Alice Johnson', email: 'alice@example.com', phone: '555-0101', checkIn: '2023-10-25', checkOut: '2023-10-28', roomNumber: '102', vip: false, status: 'Checked In', balance: 0 },
+  { id: 'g2', name: 'Robert Smith', email: 'bob.smith@example.com', phone: '555-0102', checkIn: '2023-10-26', checkOut: '2023-10-30', roomNumber: '202', vip: true, status: 'Checked In', balance: 125 },
+  { id: 'g3', name: 'Charlie Davis', email: 'charlie@example.com', phone: '555-0103', checkIn: '2023-10-28', checkOut: '2023-11-01', roomNumber: '104', vip: false, status: 'Reserved', balance: 0 },
 ];
 
 export const MOCK_HISTORY: BookingHistory[] = [
@@ -28,13 +28,15 @@ export const MOCK_HISTORY: BookingHistory[] = [
 export const MOCK_MAINTENANCE: MaintenanceTicket[] = [
   { id: 'm1', roomNumber: '201', description: 'AC unit leaking water', priority: 'High', status: 'In Progress', reportedBy: 'Housekeeping', date: '2023-10-26' },
   { id: 'm2', roomNumber: '103', description: 'TV remote batteries dead', priority: 'Low', status: 'Pending', reportedBy: 'Guest', date: '2023-10-27' },
+  { id: 'm3', roomNumber: 'Pool', description: 'Pump replacement', priority: 'High', status: 'Resolved', reportedBy: 'Mike Fixit', date: '2023-10-20', cost: 1200, completedDate: '2023-10-21' },
 ];
 
 export const MOCK_STAFF: Staff[] = [
-  { id: 's1', name: 'Sarah Connor', role: 'Manager', status: 'On Duty', shift: 'Morning' },
-  { id: 's2', name: 'John Doe', role: 'Reception', status: 'On Duty', shift: 'Morning' },
-  { id: 's3', name: 'Jane Roe', role: 'Housekeeping', status: 'Break', shift: 'Morning' },
-  { id: 's4', name: 'Mike Fixit', role: 'Maintenance', status: 'Off Duty', shift: 'Night' },
+  { id: 's0', name: 'Jason Ruiz', role: 'Superuser', status: 'On Duty', shift: 'Always', pin: '0000' },
+  { id: 's1', name: 'Sarah Connor', role: 'Manager', status: 'On Duty', shift: 'Morning', pin: '1234' },
+  { id: 's2', name: 'John Doe', role: 'Reception', status: 'On Duty', shift: 'Morning', pin: '0000' },
+  { id: 's3', name: 'Jane Roe', role: 'Housekeeping', status: 'Break', shift: 'Morning', pin: '1111' },
+  { id: 's4', name: 'Mike Fixit', role: 'Maintenance', status: 'Off Duty', shift: 'Night', pin: '2222' },
 ];
 
 export const MOCK_TRANSACTIONS: Transaction[] = [

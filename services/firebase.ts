@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import * as firebaseApp from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
 import { AppSettings } from "../types";
 
@@ -20,7 +20,8 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
   }
 
   try {
-    appInstance = initializeApp(settings.firebaseConfig);
+    // Use namespace import to access initializeApp
+    appInstance = firebaseApp.initializeApp(settings.firebaseConfig);
     dbInstance = getFirestore(appInstance);
     return dbInstance;
   } catch (error) {

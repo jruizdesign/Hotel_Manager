@@ -1,21 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 
-const apiKey = process.env.API_KEY || '';
-
-// Safely initialize, but allow the app to function without AI if key is missing (with warnings)
-let ai: GoogleGenAI | null = null;
-if (apiKey) {
-  ai = new GoogleGenAI({ apiKey });
-}
+// Initialize the client with the API key from the environment variable.
+// We assume process.env.API_KEY is pre-configured and valid as per guidelines.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateAIResponse = async (
   prompt: string, 
   contextData: string
 ): Promise<string> => {
-  if (!ai) {
-    return "API Key is missing. Please configure the environment variable.";
-  }
-
   try {
     const fullPrompt = `
       You are an expert Hotel Management AI Assistant named "ConciergeAI".

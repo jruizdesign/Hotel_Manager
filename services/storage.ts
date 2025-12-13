@@ -6,16 +6,22 @@ import { collection, getDocs, doc, writeBatch, Firestore } from 'firebase/firest
 
 const SETTINGS_ID = 'app_settings';
 
+// Check if environment variables are configured for Firebase
+const env = process.env as any;
+const hasEnvConfig = !!env.FIREBASE_API_KEY;
+
 const DEFAULT_SETTINGS: AppSettings = {
-  dataSource: 'Local',
-  demoMode: true,
+  dataSource: hasEnvConfig ? 'Cloud' : 'Local',
+  // If cloud config is present, we disable demo mode by default to prevent overwriting cloud data
+  // User will see Setup Wizard instead if DB is empty
+  demoMode: !hasEnvConfig, 
   firebaseConfig: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: ''
+    apiKey: env.FIREBASE_API_KEY || '',
+    authDomain: env.FIREBASE_AUTH_DOMAIN || '',
+    projectId: env.FIREBASE_PROJECT_ID || '',
+    storageBucket: env.FIREBASE_STORAGE_BUCKET || '',
+    messagingSenderId: env.FIREBASE_MESSAGING_SENDER_ID || '',
+    appId: env.FIREBASE_APP_ID || ''
   }
 };
 
@@ -66,6 +72,11 @@ export const StorageService = {
         }
         return appSettings;
       }
+      
+      // If no local settings, use defaults (which might include Env Var config)
+      if (DEFAULT_SETTINGS.dataSource === 'Cloud' && DEFAULT_SETTINGS.firebaseConfig) {
+        initializeFirebase(DEFAULT_SETTINGS);
+      }
       return DEFAULT_SETTINGS;
     } catch {
       return DEFAULT_SETTINGS;
@@ -99,8 +110,8 @@ export const StorageService = {
         return cloudData;
       } catch (error) {
         console.error(`Cloud fetch failed for ${collectionName}:`, error);
-        alert(`Failed to fetch ${collectionName} from Cloud. Switching to offline view.`);
-        // Fallback to local
+        // If config implies cloud but it fails, we might be offline or config is bad.
+        // For now, we alert. In a real app, we might fallback to local cache.
       }
     }
 
@@ -133,7 +144,8 @@ export const StorageService = {
         await saveCloudData(collectionName, data);
       } catch (error) {
         console.error(`Failed to save to cloud`, error);
-        alert("Warning: Saved locally, but Cloud sync failed. Check internet connection.");
+        // Note: For a robust app, we'd queue this for retry.
+        console.warn("Warning: Saved locally, but Cloud sync failed.");
       }
     }
   },

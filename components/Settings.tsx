@@ -49,8 +49,8 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
 
   const loadDbStats = async () => {
     const stats: Record<string, number> = {};
-    if (db.isOpen()) {
-        for (const table of db.tables) {
+    if ((db as any).isOpen()) {
+        for (const table of (db as any).tables) {
             stats[table.name] = await table.count();
         }
     }
@@ -128,7 +128,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
 
   const handleLogToConsole = async () => {
     const allData: any = {};
-    for (const table of db.tables) {
+    for (const table of (db as any).tables) {
       allData[table.name] = await table.toArray();
     }
     console.group("StaySync Database Dump");

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Room, RoomStatus, RoomType } from '../types';
-import { CheckCircle, XCircle, PenTool, AlertOctagon, Plus, Trash2, X, CalendarPlus, Pencil, LogOut } from 'lucide-react';
+import { CheckCircle, XCircle, PenTool, AlertOctagon, Plus, Trash2, X, CalendarPlus, Pencil, LogOut, Filter } from 'lucide-react';
 
 interface RoomListProps {
   rooms: Room[];
@@ -16,6 +16,7 @@ interface RoomListProps {
 const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, onUpdateRoom, onDeleteRoom, onBookRoom, onCheckOut, isManager }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [filterType, setFilterType] = useState<string>('All');
   
   // Form State
   const [formData, setFormData] = useState<Partial<Room>>({
@@ -23,6 +24,12 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
     type: RoomType.SINGLE,
     price: 100,
     discount: 0
+  });
+
+  // Filter Logic
+  const filteredRooms = rooms.filter(room => {
+    if (filterType === 'All') return true;
+    return room.type === filterType;
   });
 
   const getStatusColor = (status: RoomStatus) => {
@@ -80,6 +87,23 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
           <p className="text-sm text-slate-500">Manage availability, pricing, discounts, and unit status.</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
+          
+          {/* Type Filter Dropdown */}
+          <div className="relative mr-2 group">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-hover:text-emerald-500 transition-colors" size={16} />
+            <select 
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="pl-9 pr-8 py-2 bg-white border border-slate-300 hover:border-emerald-400 rounded-lg text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer appearance-none transition-all shadow-sm"
+              style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
+            >
+              <option value="All">All Types</option>
+              {Object.values(RoomType).map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex gap-2 mr-4">
             {Object.values(RoomStatus).map((status) => (
               <div key={status} className={`hidden md:flex px-3 py-1 rounded-full text-xs font-semibold items-center gap-1 border ${getStatusColor(status)}`}>
@@ -99,92 +123,99 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {rooms.map((room) => (
-          <div key={room.id} className={`relative p-5 rounded-xl border-2 transition-all hover:shadow-md ${getStatusColor(room.status)}`}>
-            
-            {/* Top Actions: Edit / Delete (Manager Only) */}
-            {isManager && (
-              <div className="absolute top-3 right-3 flex gap-1">
-                <button 
-                  onClick={() => handleOpenEditModal(room)}
-                  className="p-1.5 rounded-full hover:bg-slate-200/50 hover:text-slate-700 text-slate-400 transition-colors"
-                  title="Edit Room"
-                >
-                  <Pencil size={16} />
-                </button>
-                <button 
-                  onClick={() => {
-                    if(window.confirm(`Are you sure you want to remove Room ${room.number}?`)) {
-                      onDeleteRoom(room.id);
-                    }
-                  }}
-                  className="p-1.5 rounded-full hover:bg-red-100 hover:text-red-600 text-slate-400 transition-colors"
-                  title="Remove Room"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            )}
-
-            <div className="flex justify-between items-start mb-3 pr-16">
-              <span className="text-2xl font-bold">#{room.number}</span>
-            </div>
-            
-            <div className="flex items-center gap-2 mb-3 opacity-90">
-               {getStatusIcon(room.status)}
-               <span className="font-semibold">{room.status}</span>
-            </div>
-
-            <div className="flex justify-between items-end mb-4">
-              <span className="text-sm font-medium opacity-75">{room.type}</span>
+        {filteredRooms.length > 0 ? (
+          filteredRooms.map((room) => (
+            <div key={room.id} className={`relative p-5 rounded-xl border-2 transition-all hover:shadow-md ${getStatusColor(room.status)}`}>
               
-              <div className="flex flex-col items-end">
-                {room.discount && room.discount > 0 ? (
-                  <>
-                     <span className="text-xs text-red-400 line-through font-medium opacity-75">${room.price}</span>
-                     <div className="flex items-center gap-1">
-                       <span className="font-mono font-bold text-lg text-emerald-700">${calculateDiscountedPrice(room.price, room.discount)}</span>
-                       <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-md font-bold">-{room.discount}%</span>
-                     </div>
-                  </>
-                ) : (
-                   <span className="font-mono font-bold text-lg opacity-80">${room.price}<span className="text-xs font-normal">/n</span></span>
+              {/* Top Actions: Edit / Delete (Manager Only) */}
+              {isManager && (
+                <div className="absolute top-3 right-3 flex gap-1">
+                  <button 
+                    onClick={() => handleOpenEditModal(room)}
+                    className="p-1.5 rounded-full hover:bg-slate-200/50 hover:text-slate-700 text-slate-400 transition-colors"
+                    title="Edit Room"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if(window.confirm(`Are you sure you want to remove Room ${room.number}?`)) {
+                        onDeleteRoom(room.id);
+                      }
+                    }}
+                    className="p-1.5 rounded-full hover:bg-red-100 hover:text-red-600 text-slate-400 transition-colors"
+                    title="Remove Room"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex justify-between items-start mb-3 pr-16">
+                <span className="text-2xl font-bold">#{room.number}</span>
+              </div>
+              
+              <div className="flex items-center gap-2 mb-3 opacity-90">
+                 {getStatusIcon(room.status)}
+                 <span className="font-semibold">{room.status}</span>
+              </div>
+
+              <div className="flex justify-between items-end mb-4">
+                <span className="text-sm font-medium opacity-75">{room.type}</span>
+                
+                <div className="flex flex-col items-end">
+                  {room.discount && room.discount > 0 ? (
+                    <>
+                       <span className="text-xs text-red-400 line-through font-medium opacity-75">${room.price}</span>
+                       <div className="flex items-center gap-1">
+                         <span className="font-mono font-bold text-lg text-emerald-700">${calculateDiscountedPrice(room.price, room.discount)}</span>
+                         <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-md font-bold">-{room.discount}%</span>
+                       </div>
+                    </>
+                  ) : (
+                     <span className="font-mono font-bold text-lg opacity-80">${room.price}<span className="text-xs font-normal">/n</span></span>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="space-y-2">
+                <select 
+                  className="w-full bg-white bg-opacity-50 border border-current rounded p-1.5 text-sm font-medium focus:ring-2 focus:ring-offset-1 focus:ring-current outline-none cursor-pointer"
+                  value={room.status}
+                  onChange={(e) => onStatusChange(room.id, e.target.value as RoomStatus)}
+                >
+                  {Object.values(RoomStatus).map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+
+                {room.status === RoomStatus.AVAILABLE && (
+                  <button
+                    onClick={() => onBookRoom(room.number)}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white p-1.5 rounded text-sm font-medium shadow-sm transition-colors"
+                  >
+                    <CalendarPlus size={16} /> Book Now
+                  </button>
+                )}
+
+                {room.status === RoomStatus.OCCUPIED && (
+                  <button
+                    onClick={() => onCheckOut(room.id)}
+                    className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white p-1.5 rounded text-sm font-medium shadow-sm transition-colors"
+                  >
+                    <LogOut size={16} /> Check Out
+                  </button>
                 )}
               </div>
             </div>
-
-            {/* Quick Actions */}
-            <div className="space-y-2">
-              <select 
-                className="w-full bg-white bg-opacity-50 border border-current rounded p-1.5 text-sm font-medium focus:ring-2 focus:ring-offset-1 focus:ring-current outline-none cursor-pointer"
-                value={room.status}
-                onChange={(e) => onStatusChange(room.id, e.target.value as RoomStatus)}
-              >
-                {Object.values(RoomStatus).map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-
-              {room.status === RoomStatus.AVAILABLE && (
-                <button
-                  onClick={() => onBookRoom(room.number)}
-                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white p-1.5 rounded text-sm font-medium shadow-sm transition-colors"
-                >
-                  <CalendarPlus size={16} /> Book Now
-                </button>
-              )}
-
-              {room.status === RoomStatus.OCCUPIED && (
-                <button
-                  onClick={() => onCheckOut(room.id)}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white p-1.5 rounded text-sm font-medium shadow-sm transition-colors"
-                >
-                  <LogOut size={16} /> Check Out
-                </button>
-              )}
-            </div>
+          ))
+        ) : (
+          <div className="col-span-full py-12 text-center bg-white rounded-xl border border-dashed border-slate-300">
+            <p className="text-slate-500 font-medium">No rooms found for type: {filterType}</p>
+            <p className="text-sm text-slate-400 mt-1">Try selecting a different filter or add a new room.</p>
           </div>
-        ))}
+        )}
       </div>
 
       {/* Add / Edit Room Modal */}

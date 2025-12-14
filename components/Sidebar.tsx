@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewState, UserRole } from '../types';
-import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut, Settings, FileText } from 'lucide-react';
+import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut, Settings, FileText, Lightbulb } from 'lucide-react';
 
 interface SidebarProps {
   currentView: ViewState;
@@ -17,6 +17,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
     { id: 'guests', label: 'Guests', icon: Users, roles: ['Superuser', 'Manager', 'Staff'] },
     { id: 'maintenance', label: 'Maintenance', icon: Wrench, roles: ['Superuser', 'Manager', 'Staff', 'Contractor'] },
     { id: 'documents', label: 'Documents', icon: FileText, roles: ['Superuser', 'Manager', 'Staff'] },
+    { id: 'features', label: 'Requests', icon: Lightbulb, roles: ['Superuser', 'Manager', 'Staff'] },
     { id: 'staff', label: 'Staff', icon: Briefcase, roles: ['Superuser', 'Manager', 'Staff'] },
     { id: 'accounting', label: 'Accounting', icon: DollarSign, roles: ['Superuser', 'Manager'] },
   ];
@@ -39,7 +40,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
           }`}>
             {userRole === 'Superuser' ? 'System Admin' : userRole}
           </span>
-          <p className="text-xs text-slate-500">v3.0</p>
+          <p className="text-xs text-slate-500">v3.5</p>
         </div>
       </div>
 

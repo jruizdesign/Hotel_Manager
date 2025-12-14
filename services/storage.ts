@@ -1,4 +1,4 @@
-import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument } from '../types';
+import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest } from '../types';
 import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
 import { db } from './db';
 import { initializeFirebase, getFirebaseDB } from './firebase';
@@ -201,6 +201,13 @@ export const StorageService = {
   saveDocuments: async (documents: StoredDocument[]) => {
     return StorageService.saveData(db.documents, documents, 'documents');
   },
+  
+  getFeatureRequests: async (): Promise<FeatureRequest[]> => {
+    return StorageService.getOrSeedData(db.features, [], 'features');
+  },
+  saveFeatureRequests: async (features: FeatureRequest[]) => {
+    return StorageService.saveData(db.features, features, 'features');
+  },
 
   // --- Utility Methods ---
 
@@ -212,7 +219,8 @@ export const StorageService = {
       db.staff.clear(),
       db.transactions.clear(),
       db.history.clear(),
-      db.documents.clear()
+      db.documents.clear(),
+      db.features.clear()
     ]);
   },
 
@@ -221,18 +229,19 @@ export const StorageService = {
   },
 
   exportAllData: async () => {
-    const [rooms, guests, maintenance, staff, transactions, history, documents] = await Promise.all([
+    const [rooms, guests, maintenance, staff, transactions, history, documents, features] = await Promise.all([
       db.rooms.toArray(),
       db.guests.toArray(),
       db.maintenance.toArray(),
       db.staff.toArray(),
       db.transactions.toArray(),
       db.history.toArray(),
-      db.documents.toArray()
+      db.documents.toArray(),
+      db.features.toArray()
     ]);
 
     return {
-      version: '3.0',
+      version: '3.5',
       timestamp: new Date().toISOString(),
       data: {
         staysync_rooms: rooms,
@@ -241,7 +250,8 @@ export const StorageService = {
         staysync_staff: staff,
         staysync_transactions: transactions,
         staysync_history: history,
-        staysync_documents: documents
+        staysync_documents: documents,
+        staysync_features: features
       }
     };
   },
@@ -253,7 +263,7 @@ export const StorageService = {
     
     const data = backupData.data;
     
-    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.transactions, db.history, db.documents, async () => {
+    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.transactions, db.history, db.documents, db.features, async () => {
       await db.rooms.clear();
       if (data.staysync_rooms) await db.rooms.bulkAdd(data.staysync_rooms);
       
@@ -274,6 +284,9 @@ export const StorageService = {
 
       await db.documents.clear();
       if (data.staysync_documents) await db.documents.bulkAdd(data.staysync_documents);
+      
+      await db.features.clear();
+      if (data.staysync_features) await db.features.bulkAdd(data.staysync_features);
     });
   },
 

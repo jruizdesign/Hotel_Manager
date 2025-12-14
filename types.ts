@@ -90,7 +90,17 @@ export interface StoredDocument {
   description?: string;
 }
 
-export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'settings';
+export interface FeatureRequest {
+  id: string;
+  title: string;
+  description: string;
+  priority: 'Low' | 'Medium' | 'High';
+  status: 'Pending' | 'In Progress' | 'Completed' | 'Rejected';
+  submittedBy: string;
+  submittedDate: string;
+}
+
+export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings';
 
 export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 

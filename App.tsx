@@ -11,7 +11,8 @@ import Settings from './components/Settings';
 import SetupWizard from './components/SetupWizard';
 import MaintenancePanel from './components/MaintenancePanel';
 import DocumentCenter from './components/DocumentCenter';
-import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument } from './types';
+import FeatureRequestPanel from './components/FeatureRequestPanel';
+import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest } from './types';
 import { StorageService } from './services/storage';
 import { Wrench, Loader2, CheckCircle, Mail, AlertTriangle } from 'lucide-react';
 import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
@@ -29,6 +30,7 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [history, setHistory] = useState<BookingHistory[]>([]);
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
+  const [featureRequests, setFeatureRequests] = useState<FeatureRequest[]>([]);
 
   // Toast Notification State
   const [toast, setToast] = useState<{ message: string; subtext?: string; type?: 'success' | 'error' } | null>(null);
@@ -52,14 +54,15 @@ const App: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedTrans, fetchedHistory, fetchedDocs] = await Promise.all([
+      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedTrans, fetchedHistory, fetchedDocs, fetchedFeatures] = await Promise.all([
         StorageService.getRooms(),
         StorageService.getGuests(),
         StorageService.getMaintenance(),
         StorageService.getStaff(),
         StorageService.getTransactions(),
         StorageService.getHistory(),
-        StorageService.getDocuments()
+        StorageService.getDocuments(),
+        StorageService.getFeatureRequests()
       ]);
 
       setRooms(fetchedRooms);
@@ -69,6 +72,7 @@ const App: React.FC = () => {
       setTransactions(fetchedTrans);
       setHistory(fetchedHistory);
       setDocuments(fetchedDocs);
+      setFeatureRequests(fetchedFeatures);
     } catch (error) {
       console.error("Failed to load application data", error);
       alert("Error loading data. If using Remote Mode, check your connection settings.");
@@ -490,6 +494,46 @@ const App: React.FC = () => {
     await StorageService.saveDocuments(updatedDocs);
   };
 
+  // Feature Request Handlers
+  const handleAddFeatureRequest = async (reqData: Omit<FeatureRequest, 'id' | 'status' | 'submittedDate'>) => {
+    try {
+      const newReq: FeatureRequest = {
+        ...reqData,
+        id: `feat-${Date.now()}`,
+        status: 'Pending',
+        submittedDate: new Date().toISOString()
+      };
+      
+      const updatedFeatures = [newReq, ...featureRequests];
+      setFeatureRequests(updatedFeatures);
+      await StorageService.saveFeatureRequests(updatedFeatures);
+      setToast({ message: 'Request Submitted', subtext: 'Thank you for your feedback!' });
+    } catch (error) {
+      console.error("Failed to add feature request", error);
+      setToast({ message: 'Submission Failed', subtext: 'Could not save request.', type: 'error' });
+    }
+  };
+
+  const handleUpdateFeatureRequest = async (req: FeatureRequest) => {
+    try {
+      const updatedFeatures = featureRequests.map(r => r.id === req.id ? req : r);
+      setFeatureRequests(updatedFeatures);
+      await StorageService.saveFeatureRequests(updatedFeatures);
+    } catch (error) {
+      console.error("Failed to update feature request", error);
+    }
+  };
+
+  const handleDeleteFeatureRequest = async (id: string) => {
+    try {
+      const updatedFeatures = featureRequests.filter(r => r.id !== id);
+      setFeatureRequests(updatedFeatures);
+      await StorageService.saveFeatureRequests(updatedFeatures);
+    } catch (error) {
+      console.error("Failed to delete feature request", error);
+    }
+  };
+
   // --- Render Logic ---
 
   if (isLoading) {
@@ -576,6 +620,18 @@ const App: React.FC = () => {
              userRole={currentUser.role}
            />
          );
+      case 'features':
+         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
+         return (
+           <FeatureRequestPanel 
+             requests={featureRequests}
+             onAddRequest={handleAddFeatureRequest}
+             onUpdateRequest={handleUpdateFeatureRequest}
+             onDeleteRequest={handleDeleteFeatureRequest}
+             userRole={currentUser.role}
+             userName={currentUser.name}
+           />
+         );
       case 'staff':
         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
         return (
@@ -606,7 +662,7 @@ const App: React.FC = () => {
       <main className="flex-1 ml-64 p-8 overflow-y-auto">
         <header className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 capitalize">{currentView}</h1>
+            <h1 className="text-2xl font-bold text-slate-800 capitalize">{currentView === 'features' ? 'Requests' : currentView}</h1>
             <p className="text-slate-500 text-sm">Welcome back, {currentUser.name}.</p>
           </div>
           <div className="flex items-center gap-4">

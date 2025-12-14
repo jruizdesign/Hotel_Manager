@@ -1,4 +1,4 @@
-import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest } from '../types';
+import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest, AttendanceLog } from '../types';
 import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
 import { db } from './db';
 import { initializeFirebase, getFirebaseDB } from './firebase';
@@ -188,6 +188,13 @@ export const StorageService = {
     return StorageService.saveData(db.staff, staff, 'staff');
   },
 
+  getAttendanceLogs: async (): Promise<AttendanceLog[]> => {
+    return StorageService.getOrSeedData(db.attendance, [], 'attendance');
+  },
+  saveAttendanceLogs: async (logs: AttendanceLog[]) => {
+    return StorageService.saveData(db.attendance, logs, 'attendance');
+  },
+
   getTransactions: async (): Promise<Transaction[]> => {
     return StorageService.getOrSeedData(db.transactions, MOCK_TRANSACTIONS, 'transactions');
   },
@@ -218,6 +225,7 @@ export const StorageService = {
       db.guests.clear(),
       db.maintenance.clear(),
       db.staff.clear(),
+      db.attendance.clear(),
       db.transactions.clear(),
       db.history.clear(),
       db.documents.clear(),
@@ -230,11 +238,12 @@ export const StorageService = {
   },
 
   exportAllData: async () => {
-    const [rooms, guests, maintenance, staff, transactions, history, documents, features] = await Promise.all([
+    const [rooms, guests, maintenance, staff, attendance, transactions, history, documents, features] = await Promise.all([
       db.rooms.toArray(),
       db.guests.toArray(),
       db.maintenance.toArray(),
       db.staff.toArray(),
+      db.attendance.toArray(),
       db.transactions.toArray(),
       db.history.toArray(),
       db.documents.toArray(),
@@ -242,13 +251,14 @@ export const StorageService = {
     ]);
 
     return {
-      version: '3.5',
+      version: '3.6',
       timestamp: new Date().toISOString(),
       data: {
         staysync_rooms: rooms,
         staysync_guests: guests,
         staysync_maintenance: maintenance,
         staysync_staff: staff,
+        staysync_attendance: attendance,
         staysync_transactions: transactions,
         staysync_history: history,
         staysync_documents: documents,
@@ -264,7 +274,7 @@ export const StorageService = {
     
     const data = backupData.data;
     
-    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.transactions, db.history, db.documents, db.features, async () => {
+    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.attendance, db.transactions, db.history, db.documents, db.features, async () => {
       await db.rooms.clear();
       if (data.staysync_rooms) await db.rooms.bulkAdd(data.staysync_rooms);
       
@@ -276,6 +286,9 @@ export const StorageService = {
       
       await db.staff.clear();
       if (data.staysync_staff) await db.staff.bulkAdd(data.staysync_staff);
+
+      await db.attendance.clear();
+      if (data.staysync_attendance) await db.attendance.bulkAdd(data.staysync_attendance);
       
       await db.transactions.clear();
       if (data.staysync_transactions) await db.transactions.bulkAdd(data.staysync_transactions);

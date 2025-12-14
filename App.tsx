@@ -14,7 +14,7 @@ import DocumentCenter from './components/DocumentCenter';
 import FeatureRequestPanel from './components/FeatureRequestPanel';
 import TerminalAuth from './components/TerminalAuth';
 import DailyReport from './components/DailyReport'; // New Import
-import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest } from './types';
+import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest, AttendanceLog, AttendanceAction } from './types';
 import { StorageService } from './services/storage';
 import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
 import { Wrench, Loader2, Mail, AlertTriangle } from 'lucide-react';
@@ -35,6 +35,7 @@ const App: React.FC = () => {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceTicket[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]); // New State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [history, setHistory] = useState<BookingHistory[]>([]);
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
@@ -79,11 +80,12 @@ const App: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedTrans, fetchedHistory, fetchedDocs, fetchedFeatures] = await Promise.all([
+      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedAttendance, fetchedTrans, fetchedHistory, fetchedDocs, fetchedFeatures] = await Promise.all([
         StorageService.getRooms(),
         StorageService.getGuests(),
         StorageService.getMaintenance(),
         StorageService.getStaff(),
+        StorageService.getAttendanceLogs(),
         StorageService.getTransactions(),
         StorageService.getHistory(),
         StorageService.getDocuments(),
@@ -94,6 +96,7 @@ const App: React.FC = () => {
       setGuests(fetchedGuests);
       setMaintenance(fetchedMaint);
       setStaff(fetchedStaff);
+      setAttendanceLogs(fetchedAttendance);
       setTransactions(fetchedTrans);
       setHistory(fetchedHistory);
       setDocuments(fetchedDocs);
@@ -150,6 +153,7 @@ const App: React.FC = () => {
     
     // Auto login
     handleLogin({
+      id: newAdmin.id,
       name: newAdmin.name,
       role: 'Superuser',
       avatarInitials: newAdmin.name.substring(0, 2).toUpperCase()
@@ -469,6 +473,53 @@ const App: React.FC = () => {
     await StorageService.saveStaff(updatedStaff);
   };
 
+  const handleAttendanceAction = async (staffId: string, action: AttendanceAction) => {
+     try {
+        const staffMember = staff.find(s => s.id === staffId);
+        if (!staffMember) return;
+
+        // 1. Determine new Status based on Action
+        let newStatus: Staff['status'] = staffMember.status;
+        if (action === 'CLOCK_IN') newStatus = 'On Duty';
+        else if (action === 'CLOCK_OUT') newStatus = 'Off Duty';
+        else if (action === 'START_BREAK') newStatus = 'Break';
+        else if (action === 'END_BREAK') newStatus = 'On Duty';
+
+        // 2. Create Log Entry
+        const newLog: AttendanceLog = {
+           id: `log-${Date.now()}`,
+           staffId,
+           staffName: staffMember.name,
+           action,
+           timestamp: new Date().toISOString()
+        };
+
+        // 3. Update State & DB
+        const updatedStaff = staff.map(s => s.id === staffId ? { ...s, status: newStatus } : s);
+        const updatedLogs = [newLog, ...attendanceLogs];
+
+        setStaff(updatedStaff);
+        setAttendanceLogs(updatedLogs);
+
+        await Promise.all([
+           StorageService.saveStaff(updatedStaff),
+           StorageService.saveAttendanceLogs(updatedLogs)
+        ]);
+
+        let msg = "";
+        if (action === 'CLOCK_IN') msg = "Welcome! You are now On Duty.";
+        if (action === 'CLOCK_OUT') msg = "Goodbye! You are now Off Duty.";
+        if (action === 'START_BREAK') msg = "Break started. Enjoy your rest.";
+        if (action === 'END_BREAK') msg = "Welcome back from break.";
+        
+        setToast({ message: 'Status Updated', subtext: msg });
+
+     } catch (err) {
+        console.error("Attendance log failed", err);
+        setToast({ message: 'Error', subtext: 'Failed to log attendance.', type: 'error' });
+     }
+  };
+
   const handleAddDocument = async (newDocData: Omit<StoredDocument, 'id' | 'date' | 'size'>) => {
      try {
        const sizeInBytes = Math.ceil((newDocData.fileData.length * 3) / 4);
@@ -658,9 +709,13 @@ const App: React.FC = () => {
         return (
           <StaffList 
             staff={staff}
+            attendanceLogs={attendanceLogs}
+            currentUserId={currentUser.id}
+            userRole={currentUser.role}
             onAddStaff={handleAddStaff}
             onDeleteStaff={handleDeleteStaff}
             onUpdateStatus={handleUpdateStaffStatus}
+            onAttendanceAction={handleAttendanceAction}
           />
         );
       case 'settings':

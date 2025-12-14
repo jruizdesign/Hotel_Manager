@@ -50,6 +50,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
         : selectedUser.name.substring(0, 2).toUpperCase();
 
       onLogin({
+        id: selectedUser.id, // Pass the Staff ID to track attendance
         name: selectedUser.name,
         role: appRole,
         avatarInitials: initials

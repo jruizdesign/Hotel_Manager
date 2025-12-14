@@ -69,6 +69,16 @@ export interface Staff {
   pin: string; // Security PIN for login
 }
 
+export type AttendanceAction = 'CLOCK_IN' | 'CLOCK_OUT' | 'START_BREAK' | 'END_BREAK';
+
+export interface AttendanceLog {
+  id: string;
+  staffId: string;
+  staffName: string; // Denormalized for easier display
+  action: AttendanceAction;
+  timestamp: string; // ISO String
+}
+
 export interface Transaction {
   id: string;
   date: string;
@@ -105,6 +115,7 @@ export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staf
 export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 
 export interface CurrentUser {
+  id?: string; // Added to track specific staff ID
   name: string;
   role: UserRole;
   avatarInitials: string;

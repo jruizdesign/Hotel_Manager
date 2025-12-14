@@ -1,15 +1,16 @@
 import React from 'react';
 import { ViewState, UserRole } from '../types';
-import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut, Settings, FileText, Lightbulb, ClipboardCheck } from 'lucide-react';
+import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut, Settings, FileText, Lightbulb, ClipboardCheck, Lock } from 'lucide-react';
 
 interface SidebarProps {
   currentView: ViewState;
   setView: (view: ViewState) => void;
   userRole: UserRole;
   onLogout: () => void;
+  onLock: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLogout }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLogout, onLock }) => {
   // Define all possible items
   const allNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Superuser', 'Manager', 'Staff'] },
@@ -80,13 +81,24 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
             <span className="font-medium">Settings</span>
           </button>
         )}
+        
         <button 
           onClick={onLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-900/20 hover:text-red-300 rounded-lg transition-colors"
+          className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-colors"
         >
           <LogOut size={20} />
           <span className="font-medium">Sign Out</span>
         </button>
+
+        {userRole === 'Superuser' && (
+          <button 
+            onClick={onLock}
+            className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-900/20 hover:text-red-300 rounded-lg transition-colors border border-red-900/30"
+          >
+            <Lock size={20} />
+            <span className="font-medium">Lock System</span>
+          </button>
+        )}
 
         <div className="pt-4 mt-2 text-center border-t border-slate-800/50">
           <p className="text-[10px] text-slate-600 font-medium tracking-wide">

@@ -1,6 +1,6 @@
 import * as firebase from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, createUserWithEmailAndPassword, User, Auth } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, User, Auth } from "firebase/auth";
 import { AppSettings } from "../types";
 
 let dbInstance: Firestore | null = null;
@@ -83,6 +83,11 @@ export const loginTerminal = async (email: string, pass: string) => {
 export const registerTerminalUser = async (email: string, pass: string) => {
     if (!authInstance) throw new Error("Cloud connection not active. Check settings.");
     return await createUserWithEmailAndPassword(authInstance, email, pass);
+};
+
+export const changeUserPassword = async (newPassword: string) => {
+    if (!authInstance || !authInstance.currentUser) throw new Error("No active cloud user found.");
+    return await updatePassword(authInstance.currentUser, newPassword);
 };
 
 export const logoutTerminal = async () => {

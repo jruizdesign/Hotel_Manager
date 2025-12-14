@@ -16,7 +16,7 @@ import TerminalAuth from './components/TerminalAuth';
 import DailyReport from './components/DailyReport'; // New Import
 import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest } from './types';
 import { StorageService } from './services/storage';
-import { subscribeToAuthChanges } from './services/firebase';
+import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
 import { Wrench, Loader2, Mail, AlertTriangle } from 'lucide-react';
 import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
 
@@ -117,7 +117,16 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    // Only logs out of the local "Staff" session, keeps Firebase connected
     setCurrentUser(null);
+    setView('dashboard');
+  };
+
+  const handleLock = async () => {
+    // Completely signs out of Firebase and resets state
+    await logoutTerminal();
+    setCurrentUser(null);
+    setTerminalUser(null);
     setView('dashboard');
   };
 
@@ -669,6 +678,7 @@ const App: React.FC = () => {
         setView={setView} 
         userRole={currentUser.role}
         onLogout={handleLogout}
+        onLock={handleLock}
       />
       
       <main className="flex-1 ml-64 p-8 overflow-y-auto">

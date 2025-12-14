@@ -1,47 +1,65 @@
 import { MaintenanceTicket } from '../types';
 
+const API_URL = 'http://localhost:3000';
+
 /**
- * Simulates sending an email by logging to console and returning a promise.
- * In a real app, this would call a backend endpoint or an Email API like SendGrid/AWS SES.
+ * Sends a maintenance request alert via the backend email queue.
  */
-
 export const sendMaintenanceRequestEmail = async (ticket: MaintenanceTicket): Promise<boolean> => {
-  // Simulate network delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  try {
+    // Construct the email payload
+    const payload = {
+      to: 'jruizdesign@gmail.com', // In production, fetch this from AppSettings
+      subject: `[${ticket.priority.toUpperCase()}] New Issue in Room ${ticket.roomNumber}`,
+      body: `MAINTENANCE REQUEST\n\nRoom: ${ticket.roomNumber}\nPriority: ${ticket.priority}\nReported By: ${ticket.reportedBy}\nDate: ${ticket.date}\n\nDescription:\n${ticket.description}`
+    };
 
-  const timestamp = new Date().toLocaleString();
-  
-  console.group('%c📧 EMAIL SENT: NEW MAINTENANCE REQUEST', 'color: #10b981; font-weight: bold; font-size: 12px;');
-  console.log(`%cTime: ${timestamp}`, 'color: #64748b');
-  console.log(`%cTo: maintenance@staysync.hotel`, 'font-weight: bold');
-  console.log(`%cSubject: [${ticket.priority.toUpperCase()}] New Issue in Room ${ticket.roomNumber}`, 'font-weight: bold');
-  console.log(`----------------------------------------`);
-  console.log(`Room: ${ticket.roomNumber}`);
-  console.log(`Priority: ${ticket.priority}`);
-  console.log(`Reported By: ${ticket.reportedBy}`);
-  console.log(`Description: \n${ticket.description}`);
-  console.log(`----------------------------------------`);
-  console.groupEnd();
+    const response = await fetch(`${API_URL}/send-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  return true;
+    if (!response.ok) {
+      throw new Error(`Server responded with ${response.status}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Failed to send maintenance email:", error);
+    // We throw the error so the UI (App.tsx) knows to display the "Email Failed" toast
+    throw error; 
+  }
 };
 
+/**
+ * Sends a resolution report email via the backend email queue.
+ */
 export const sendMaintenanceResolvedEmail = async (ticket: MaintenanceTicket, cost: number, notes: string): Promise<boolean> => {
-  // Simulate network delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  try {
+    const payload = {
+      to: 'jruizdesign@gmail.com', // In production, fetch this from AppSettings
+      subject: `Ticket Resolved - Room ${ticket.roomNumber}`,
+      body: `TICKET RESOLVED\n\nTicket ID: ${ticket.id}\nRoom: ${ticket.roomNumber}\n\nTotal Cost: $${cost.toFixed(2)}\n\nResolution Notes:\n${notes}\n\nStatus: Closed`
+    };
 
-  const timestamp = new Date().toLocaleString();
+    const response = await fetch(`${API_URL}/send-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  console.group('%c📧 EMAIL SENT: MAINTENANCE TICKET RESOLVED', 'color: #3b82f6; font-weight: bold; font-size: 12px;');
-  console.log(`%cTime: ${timestamp}`, 'color: #64748b');
-  console.log(`%cTo: manager@staysync.hotel`, 'font-weight: bold');
-  console.log(`%cSubject: Ticket Resolved - Room ${ticket.roomNumber}`, 'font-weight: bold');
-  console.log(`----------------------------------------`);
-  console.log(`Ticket ID: ${ticket.id}`);
-  console.log(`Total Cost: $${cost.toFixed(2)}`);
-  console.log(`Resolution Notes: \n${notes}`);
-  console.log(`----------------------------------------`);
-  console.groupEnd();
+    if (!response.ok) {
+      throw new Error(`Server responded with ${response.status}`);
+    }
 
-  return true;
+    return true;
+  } catch (error) {
+    console.error("Failed to send resolution email:", error);
+    throw error;
+  }
 };

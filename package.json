@@ -16,9 +16,13 @@
   },
   "dependencies": {
     "@google/genai": "^1.32.0",
+    "bullmq": "^5.4.0",
     "dexie": "^4.0.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
     "firebase": "^10.8.0",
     "lucide-react": "^0.559.0",
+    "nodemailer": "^6.9.10",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "recharts": "^3.5.1"
@@ -44,7 +48,9 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "worker.js",
+      "server.js"
     ],
     "win": {
       "target": "nsis",

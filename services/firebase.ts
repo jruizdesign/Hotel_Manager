@@ -1,6 +1,6 @@
 import * as firebase from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, User, Auth } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, User, Auth } from "firebase/auth";
 import { AppSettings } from "../types";
 
 let dbInstance: Firestore | null = null;
@@ -48,6 +48,11 @@ export const loginTerminal = async (email: string, pass: string) => {
 export const logoutTerminal = async () => {
     if (!authInstance) return;
     return await signOut(authInstance);
+};
+
+export const resetTerminalPassword = async (email: string) => {
+    if (!authInstance) throw new Error("Cloud connection not active. Check settings.");
+    return await sendPasswordResetEmail(authInstance, email);
 };
 
 export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {

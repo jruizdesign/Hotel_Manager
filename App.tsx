@@ -12,17 +12,24 @@ import SetupWizard from './components/SetupWizard';
 import MaintenancePanel from './components/MaintenancePanel';
 import DocumentCenter from './components/DocumentCenter';
 import FeatureRequestPanel from './components/FeatureRequestPanel';
-import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest } from './types';
+import TerminalAuth from './components/TerminalAuth'; // New Firebase Auth Component
+import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest } from './types';
 import { StorageService } from './services/storage';
-import { Wrench, Loader2, CheckCircle, Mail, AlertTriangle } from 'lucide-react';
+import { subscribeToAuthChanges } from './services/firebase';
+import { Wrench, Loader2, Mail, AlertTriangle } from 'lucide-react';
 import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
 
 const App: React.FC = () => {
+  // Authentication State
+  const [terminalUser, setTerminalUser] = useState<any | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Application State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [currentView, setView] = useState<ViewState>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
   
-  // App State
+  // Data State
   const [rooms, setRooms] = useState<Room[]>([]);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceTicket[]>([]);
@@ -38,9 +45,26 @@ const App: React.FC = () => {
   // Navigation State for External Triggers
   const [bookingRequest, setBookingRequest] = useState<{ isOpen: boolean, roomNumber?: string }>({ isOpen: false });
 
-  // --- Initial Data Load ---
+  // --- Initialization & Auth Logic ---
   useEffect(() => {
-    loadData();
+    const initApp = async () => {
+      // 1. Initialize Firebase via StorageService (reads .env or DB)
+      await StorageService.getSettings();
+      
+      // 2. Subscribe to Firebase Auth State
+      const unsubscribe = subscribeToAuthChanges((user) => {
+        setTerminalUser(user);
+        setAuthLoading(false);
+        if (user) {
+          // If authorized, load app data
+          loadData();
+        }
+      });
+      
+      return () => unsubscribe();
+    };
+
+    initApp();
   }, []);
 
   // Toast Timer
@@ -75,13 +99,12 @@ const App: React.FC = () => {
       setFeatureRequests(fetchedFeatures);
     } catch (error) {
       console.error("Failed to load application data", error);
-      alert("Error loading data. If using Remote Mode, check your connection settings.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- Auth & Permission Handlers ---
+  // --- Auth Handlers ---
 
   const handleLogin = (user: CurrentUser) => {
     setCurrentUser(user);
@@ -98,7 +121,6 @@ const App: React.FC = () => {
   };
 
   const handleDataReset = async () => {
-    // Reload all state from storage after a reset
     await loadData();
     setView('dashboard');
   };
@@ -107,7 +129,7 @@ const App: React.FC = () => {
     const newAdmin: Staff = {
       id: Date.now().toString(),
       name,
-      role: 'Superuser', // Default the first user to Superuser
+      role: 'Superuser', 
       status: 'On Duty',
       shift: 'Any',
       pin
@@ -160,7 +182,6 @@ const App: React.FC = () => {
     await StorageService.saveRooms(updatedRooms);
   };
 
-  // Setup Wizard Completion
   const handleSetupComplete = async (newRooms: Omit<Room, 'id' | 'status'>[]) => {
     const createdRooms: Room[] = newRooms.map((r, idx) => ({
       ...r,
@@ -171,7 +192,6 @@ const App: React.FC = () => {
     await StorageService.saveRooms(createdRooms);
   };
 
-  // Triggered from RoomList
   const handleBookRoom = (roomNumber: string) => {
     setView('guests');
     setBookingRequest({ isOpen: true, roomNumber });
@@ -184,7 +204,6 @@ const App: React.FC = () => {
     if (!window.confirm(`Confirm Check Out for Room ${room.number}? This will mark the room as Dirty.`)) return;
 
     try {
-      // 1. Update Guest Status
       const todayStr = new Date().toISOString().split('T')[0];
       const updatedGuests = guests.map(g => {
         if (g.id === room.guestId) {
@@ -193,12 +212,10 @@ const App: React.FC = () => {
         return g;
       });
 
-      // 2. Update Room Status
       const updatedRooms = rooms.map(r => 
         r.id === roomId ? { ...r, status: RoomStatus.DIRTY, guestId: undefined } : r
       );
 
-      // 3. Save State
       setGuests(updatedGuests);
       setRooms(updatedRooms);
 
@@ -214,7 +231,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Maintenance Handlers
   const handleAddTicket = async (ticketData: Omit<MaintenanceTicket, 'id' | 'status' | 'date'>) => {
     try {
       const newTicket: MaintenanceTicket = {
@@ -224,12 +240,10 @@ const App: React.FC = () => {
         date: new Date().toISOString().split('T')[0]
       };
       
-      // Update UI first
       const updatedMaintenance = [newTicket, ...maintenance];
       setMaintenance(updatedMaintenance);
       await StorageService.saveMaintenance(updatedMaintenance);
 
-      // Trigger Email Notification with response handling
       sendMaintenanceRequestEmail(newTicket)
         .then(() => {
           setToast({
@@ -239,7 +253,6 @@ const App: React.FC = () => {
         })
         .catch((err) => {
           console.error("Email notification failed", err);
-          // Ensure we call 'sendResponse' equivalent (UI feedback) even on failure
           setToast({
             message: 'Ticket Created',
             subtext: 'Warning: Email notification failed to send.',
@@ -258,7 +271,6 @@ const App: React.FC = () => {
        const today = new Date().toISOString().split('T')[0];
        const ticket = maintenance.find(t => t.id === ticketId);
        
-       // 1. Update Ticket
        const updatedMaintenance = maintenance.map(t => 
          t.id === ticketId 
            ? { ...t, status: 'Resolved' as const, cost, completedDate: today } 
@@ -266,7 +278,6 @@ const App: React.FC = () => {
        );
        setMaintenance(updatedMaintenance);
 
-       // 2. Create Transaction for Accounting
        let updatedTransactions = transactions;
        if (cost > 0) {
          const newTx: Transaction = {
@@ -286,7 +297,6 @@ const App: React.FC = () => {
          StorageService.saveTransactions(updatedTransactions)
        ]);
 
-       // Trigger Email Notification with response handling
        if (ticket) {
           sendMaintenanceResolvedEmail(ticket, cost, note)
             .then(() => {
@@ -297,7 +307,6 @@ const App: React.FC = () => {
             })
             .catch((err) => {
               console.error("Email notification failed", err);
-              // Ensure feedback is provided regardless of success/fail
               setToast({
                 message: 'Ticket Resolved',
                 subtext: 'Warning: Resolution email failed to send.',
@@ -311,9 +320,6 @@ const App: React.FC = () => {
      }
   };
 
-  // NOTE: This function needs to return boolean for success/fail UI feedback, 
-  // but it calls async functions. For simplicity in UI, we update state optimistically 
-  // and trigger the save in background.
   const handleAddGuest = (newGuestData: Omit<Guest, 'id'>): boolean => {
     if (currentUser?.role === 'Contractor') return false; 
 
@@ -329,7 +335,6 @@ const App: React.FC = () => {
       balance: 0
     };
     
-    // Optimistic Update
     const updatedGuests = [...guests, newGuest];
     setGuests(updatedGuests);
     
@@ -351,7 +356,6 @@ const App: React.FC = () => {
       StorageService.saveRooms(updatedRooms)
         .catch(err => {
           console.error("Failed to update room", err);
-          // Note: In a real app we might want to revert state here
         });
     }
 
@@ -363,19 +367,15 @@ const App: React.FC = () => {
       const oldGuest = guests.find(g => g.id === updatedGuest.id);
       if (!oldGuest) return;
 
-      // 1. Handle Room Swap if room number changed
       let currentRooms = [...rooms];
       if (oldGuest.roomNumber !== updatedGuest.roomNumber) {
-        // Free old room
         const oldRoomIdx = currentRooms.findIndex(r => r.number === oldGuest.roomNumber);
         if (oldRoomIdx > -1) {
           currentRooms[oldRoomIdx] = { ...currentRooms[oldRoomIdx], status: RoomStatus.DIRTY, guestId: undefined };
         }
         
-        // Occupy new room
         const newRoomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
         if (newRoomIdx > -1) {
-          // Only occupy if we are checking in or already checked in
           if (updatedGuest.status === 'Checked In') {
              currentRooms[newRoomIdx] = { ...currentRooms[newRoomIdx], status: RoomStatus.OCCUPIED, guestId: updatedGuest.id };
           }
@@ -383,7 +383,6 @@ const App: React.FC = () => {
           alert(`Warning: Room ${updatedGuest.roomNumber} does not exist. Guest updated but room status not linked.`);
         }
       } else {
-        // Room didn't change, but check if status changed (e.g. Reserved -> Checked In)
         const roomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
         if (roomIdx > -1) {
            if (oldGuest.status === 'Reserved' && updatedGuest.status === 'Checked In') {
@@ -392,10 +391,8 @@ const App: React.FC = () => {
         }
       }
 
-      // 2. Update Guest List
       const updatedGuests = guests.map(g => g.id === updatedGuest.id ? updatedGuest : g);
       
-      // 3. Save State
       setGuests(updatedGuests);
       setRooms(currentRooms);
       
@@ -432,7 +429,6 @@ const App: React.FC = () => {
       });
       setGuests(updatedGuests);
 
-      // Save both
       await Promise.all([
         StorageService.saveTransactions(updatedTransactions),
         StorageService.saveGuests(updatedGuests)
@@ -444,7 +440,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Staff Handlers
   const handleAddStaff = async (newStaffData: Omit<Staff, 'id'>) => {
     const newMember: Staff = { ...newStaffData, id: Date.now().toString() };
     const updatedStaff = [...staff, newMember];
@@ -464,10 +459,8 @@ const App: React.FC = () => {
     await StorageService.saveStaff(updatedStaff);
   };
 
-  // Document Handlers
   const handleAddDocument = async (newDocData: Omit<StoredDocument, 'id' | 'date' | 'size'>) => {
      try {
-       // Calculate approximate size from base64 length
        const sizeInBytes = Math.ceil((newDocData.fileData.length * 3) / 4);
        
        const newDoc: StoredDocument = {
@@ -494,7 +487,6 @@ const App: React.FC = () => {
     await StorageService.saveDocuments(updatedDocs);
   };
 
-  // Feature Request Handlers
   const handleAddFeatureRequest = async (reqData: Omit<FeatureRequest, 'id' | 'status' | 'submittedDate'>) => {
     try {
       const newReq: FeatureRequest = {
@@ -536,6 +528,21 @@ const App: React.FC = () => {
 
   // --- Render Logic ---
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-emerald-500">
+        <Loader2 className="w-12 h-12 animate-spin mb-4" />
+        <p className="text-slate-400">Connecting to Cloud Services...</p>
+      </div>
+    );
+  }
+
+  // If not logged into Firebase, show the Terminal Auth Screen
+  if (!terminalUser) {
+    return <TerminalAuth />;
+  }
+
+  // If logged into Firebase but app data loading
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-400">
@@ -545,11 +552,12 @@ const App: React.FC = () => {
     );
   }
 
+  // If app data loaded but no staff logged in (PIN screen)
   if (!currentUser) {
     return <LoginScreen staff={staff} onLogin={handleLogin} onCreateAdmin={handleCreateAdmin} />;
   }
 
-  // Construct context for AI
+  // Main Application
   const aiContext = {
     currentUserRole: currentUser.role,
     currentView,
@@ -685,12 +693,10 @@ const App: React.FC = () => {
 
       <GeminiAssistant contextData={aiContext} />
 
-      {/* Setup Wizard Overlay - Only shows if rooms are empty (meaning not in demo and not setup) */}
       {!isLoading && rooms.length === 0 && (currentUser.role === 'Manager' || currentUser.role === 'Superuser') && (
         <SetupWizard onComplete={handleSetupComplete} />
       )}
 
-      {/* Global Toast Notification */}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-5 duration-300">
           <div className={`text-white pl-4 pr-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 border ${toast.type === 'error' ? 'bg-red-900 border-red-700' : 'bg-slate-900 border-slate-700'}`}>

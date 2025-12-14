@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CurrentUser, Staff, UserRole } from '../types';
-import { Shield, Lock, ChevronRight, User, AlertCircle, Key, Unlock, ShieldCheck } from 'lucide-react';
+import { Shield, Lock, ChevronRight, User, AlertCircle, Key, Unlock, ShieldCheck, LogOut } from 'lucide-react';
+import { logoutTerminal } from '../services/firebase';
 
 interface LoginScreenProps {
   staff: Staff[];
@@ -63,6 +64,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
     e.preventDefault();
     if (newAdminName && newAdminPin.length === 4) {
       onCreateAdmin(newAdminName, newAdminPin);
+    }
+  };
+
+  const handleLockTerminal = async () => {
+    if (window.confirm("Lock this terminal? You will need the Administrator password to unlock it.")) {
+        await logoutTerminal();
     }
   };
 
@@ -135,7 +142,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
             {!selectedUser ? (
               // View 2.A: Select User
               <div className="space-y-6">
-                <h2 className="text-xl font-semibold text-white mb-4 text-center">Select Your Profile</h2>
+                <div className="flex justify-between items-center mb-4">
+                   <h2 className="text-xl font-semibold text-white text-center flex-1 ml-6">Select Your Profile</h2>
+                   <button 
+                     onClick={handleLockTerminal}
+                     className="text-slate-400 hover:text-red-400 p-2 rounded-lg transition-colors"
+                     title="Lock Terminal"
+                   >
+                     <LogOut size={16} />
+                   </button>
+                </div>
                 
                 <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                   

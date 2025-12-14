@@ -100,7 +100,7 @@ export interface FeatureRequest {
   submittedDate: string;
 }
 
-export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings';
+export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings' | 'reports';
 
 export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 

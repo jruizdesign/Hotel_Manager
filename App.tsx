@@ -12,7 +12,8 @@ import SetupWizard from './components/SetupWizard';
 import MaintenancePanel from './components/MaintenancePanel';
 import DocumentCenter from './components/DocumentCenter';
 import FeatureRequestPanel from './components/FeatureRequestPanel';
-import TerminalAuth from './components/TerminalAuth'; // New Firebase Auth Component
+import TerminalAuth from './components/TerminalAuth';
+import DailyReport from './components/DailyReport'; // New Import
 import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest } from './types';
 import { StorageService } from './services/storage';
 import { subscribeToAuthChanges } from './services/firebase';
@@ -575,6 +576,9 @@ const App: React.FC = () => {
       case 'dashboard':
         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
         return <Dashboard rooms={rooms} guests={guests} maintenance={maintenance} transactions={transactions} />;
+      case 'reports':
+        if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
+        return <DailyReport guests={guests} rooms={rooms} transactions={transactions} />;
       case 'rooms':
         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
         return (
@@ -670,7 +674,7 @@ const App: React.FC = () => {
       <main className="flex-1 ml-64 p-8 overflow-y-auto">
         <header className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 capitalize">{currentView === 'features' ? 'Requests' : currentView}</h1>
+            <h1 className="text-2xl font-bold text-slate-800 capitalize">{currentView === 'features' ? 'Requests' : currentView.replace('-', ' ')}</h1>
             <p className="text-slate-500 text-sm">Welcome back, {currentUser.name}.</p>
           </div>
           <div className="flex items-center gap-4">

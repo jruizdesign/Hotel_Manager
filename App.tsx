@@ -10,7 +10,8 @@ import StaffList from './components/StaffList';
 import Settings from './components/Settings';
 import SetupWizard from './components/SetupWizard';
 import MaintenancePanel from './components/MaintenancePanel';
-import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket } from './types';
+import DocumentCenter from './components/DocumentCenter';
+import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument } from './types';
 import { StorageService } from './services/storage';
 import { Wrench, Loader2, CheckCircle, Mail } from 'lucide-react';
 import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
@@ -27,6 +28,7 @@ const App: React.FC = () => {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [history, setHistory] = useState<BookingHistory[]>([]);
+  const [documents, setDocuments] = useState<StoredDocument[]>([]);
 
   // Toast Notification State
   const [toast, setToast] = useState<{ message: string; subtext?: string } | null>(null);
@@ -50,13 +52,14 @@ const App: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedTrans, fetchedHistory] = await Promise.all([
+      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedTrans, fetchedHistory, fetchedDocs] = await Promise.all([
         StorageService.getRooms(),
         StorageService.getGuests(),
         StorageService.getMaintenance(),
         StorageService.getStaff(),
         StorageService.getTransactions(),
         StorageService.getHistory(),
+        StorageService.getDocuments()
       ]);
 
       setRooms(fetchedRooms);
@@ -65,6 +68,7 @@ const App: React.FC = () => {
       setStaff(fetchedStaff);
       setTransactions(fetchedTrans);
       setHistory(fetchedHistory);
+      setDocuments(fetchedDocs);
     } catch (error) {
       console.error("Failed to load application data", error);
       alert("Error loading data. If using Remote Mode, check your connection settings.");
@@ -397,6 +401,31 @@ const App: React.FC = () => {
     await StorageService.saveStaff(updatedStaff);
   };
 
+  // Document Handlers
+  const handleAddDocument = async (newDocData: Omit<StoredDocument, 'id' | 'date' | 'size'>) => {
+     // Calculate approximate size from base64 length
+     const sizeInBytes = Math.ceil((newDocData.fileData.length * 3) / 4);
+     
+     const newDoc: StoredDocument = {
+       ...newDocData,
+       id: `doc-${Date.now()}`,
+       date: new Date().toISOString(),
+       size: sizeInBytes
+     };
+
+     const updatedDocs = [newDoc, ...documents];
+     setDocuments(updatedDocs);
+     await StorageService.saveDocuments(updatedDocs);
+     
+     setToast({ message: 'Document Saved', subtext: newDoc.title });
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    const updatedDocs = documents.filter(d => d.id !== id);
+    setDocuments(updatedDocs);
+    await StorageService.saveDocuments(updatedDocs);
+  };
+
   // --- Render Logic ---
 
   if (isLoading) {
@@ -473,6 +502,16 @@ const App: React.FC = () => {
             onResolveTicket={handleResolveTicket}
           />
         );
+      case 'documents':
+         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
+         return (
+           <DocumentCenter 
+             documents={documents}
+             onAddDocument={handleAddDocument}
+             onDeleteDocument={handleDeleteDocument}
+             userRole={currentUser.role}
+           />
+         );
       case 'staff':
         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
         return (

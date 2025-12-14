@@ -2,7 +2,7 @@
   "name": "staysync-hotel-management",
   "productName": "StaySync Manager",
   "private": true,
-  "version": "2.1.0",
+  "version": "3.0.0",
   "type": "module",
   "main": "electron/main.js",
   "author": "StaySync Inc",

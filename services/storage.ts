@@ -1,4 +1,4 @@
-import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings } from '../types';
+import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument } from '../types';
 import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
 import { db } from './db';
 import { initializeFirebase, getFirebaseDB } from './firebase';
@@ -102,7 +102,7 @@ export const StorageService = {
     if (settings.dataSource === 'Cloud') {
       try {
         const cloudData = await getCloudData<T>(collectionName);
-        if (cloudData.length === 0 && settings.demoMode) {
+        if (cloudData.length === 0 && settings.demoMode && mockData.length > 0) {
            // Seed Cloud with Mock Data if empty
            await saveCloudData(collectionName, mockData);
            return mockData;
@@ -119,7 +119,7 @@ export const StorageService = {
     const count = await localTable.count();
     
     // If DB is empty and Demo Mode is ON, seed it
-    if (count === 0 && settings.demoMode) {
+    if (count === 0 && settings.demoMode && mockData.length > 0) {
       console.log(`Seeding ${localTable.name} with mock data...`);
       await localTable.bulkAdd(mockData);
       return mockData;
@@ -194,6 +194,14 @@ export const StorageService = {
     return StorageService.saveData(db.transactions, transactions, 'transactions');
   },
 
+  getDocuments: async (): Promise<StoredDocument[]> => {
+    // No mocks for documents for now
+    return StorageService.getOrSeedData(db.documents, [], 'documents');
+  },
+  saveDocuments: async (documents: StoredDocument[]) => {
+    return StorageService.saveData(db.documents, documents, 'documents');
+  },
+
   // --- Utility Methods ---
 
   clearAllData: async () => {
@@ -203,7 +211,8 @@ export const StorageService = {
       db.maintenance.clear(),
       db.staff.clear(),
       db.transactions.clear(),
-      db.history.clear()
+      db.history.clear(),
+      db.documents.clear()
     ]);
   },
 
@@ -212,17 +221,18 @@ export const StorageService = {
   },
 
   exportAllData: async () => {
-    const [rooms, guests, maintenance, staff, transactions, history] = await Promise.all([
+    const [rooms, guests, maintenance, staff, transactions, history, documents] = await Promise.all([
       db.rooms.toArray(),
       db.guests.toArray(),
       db.maintenance.toArray(),
       db.staff.toArray(),
       db.transactions.toArray(),
-      db.history.toArray()
+      db.history.toArray(),
+      db.documents.toArray()
     ]);
 
     return {
-      version: '1.0',
+      version: '3.0',
       timestamp: new Date().toISOString(),
       data: {
         staysync_rooms: rooms,
@@ -230,7 +240,8 @@ export const StorageService = {
         staysync_maintenance: maintenance,
         staysync_staff: staff,
         staysync_transactions: transactions,
-        staysync_history: history
+        staysync_history: history,
+        staysync_documents: documents
       }
     };
   },
@@ -242,7 +253,7 @@ export const StorageService = {
     
     const data = backupData.data;
     
-    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.transactions, db.history, async () => {
+    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.transactions, db.history, db.documents, async () => {
       await db.rooms.clear();
       if (data.staysync_rooms) await db.rooms.bulkAdd(data.staysync_rooms);
       
@@ -260,6 +271,9 @@ export const StorageService = {
 
       await db.history.clear();
       if (data.staysync_history) await db.history.bulkAdd(data.staysync_history);
+
+      await db.documents.clear();
+      if (data.staysync_documents) await db.documents.bulkAdd(data.staysync_documents);
     });
   },
 

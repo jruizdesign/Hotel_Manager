@@ -79,7 +79,18 @@ export interface Transaction {
   guestId?: string; // Optional link to a specific guest
 }
 
-export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'settings';
+export interface StoredDocument {
+  id: string;
+  title: string;
+  category: 'Invoice' | 'Guest ID' | 'Contract' | 'Report' | 'Other';
+  date: string; // ISO Date String
+  fileData: string; // Base64 Encoded Data
+  fileType: string; // MIME Type (e.g., 'application/pdf')
+  size: number; // Bytes
+  description?: string;
+}
+
+export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'settings';
 
 export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 

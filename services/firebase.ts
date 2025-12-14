@@ -1,6 +1,6 @@
 import * as firebase from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, User, Auth } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, createUserWithEmailAndPassword, User, Auth } from "firebase/auth";
 import { AppSettings } from "../types";
 
 let dbInstance: Firestore | null = null;
@@ -43,6 +43,11 @@ export const getFirebaseDB = (): Firestore | null => {
 export const loginTerminal = async (email: string, pass: string) => {
     if (!authInstance) throw new Error("Cloud connection not active. Check settings.");
     return await signInWithEmailAndPassword(authInstance, email, pass);
+};
+
+export const registerTerminalUser = async (email: string, pass: string) => {
+    if (!authInstance) throw new Error("Cloud connection not active. Check settings.");
+    return await createUserWithEmailAndPassword(authInstance, email, pass);
 };
 
 export const logoutTerminal = async () => {

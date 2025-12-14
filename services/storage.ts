@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   // If cloud config is present, we disable demo mode by default to prevent overwriting cloud data
   // User will see Setup Wizard instead if DB is empty
   demoMode: !hasEnvConfig, 
+  maintenanceEmail: 'maintenance@staysync.hotel',
   firebaseConfig: {
     apiKey: process.env.FIREBASE_API_KEY || '',
     authDomain: process.env.FIREBASE_AUTH_DOMAIN || '',

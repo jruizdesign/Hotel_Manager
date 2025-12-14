@@ -8,10 +8,10 @@
   "author": "StaySync Inc",
   "description": "Smart Hotel Management Dashboard",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k \"vite\" \"node server.js\" \"node worker.js\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "electron:dev": "concurrently -k \"vite\" \"node server.js\" \"node worker.js\" \"wait-on tcp:5173 && electron .\"",
     "dist": "tsc && vite build && electron-builder"
   },
   "dependencies": {

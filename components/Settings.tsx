@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
 import { db } from '../services/db';
 import { AppSettings, UserRole, FirebaseConfig } from '../types';
-import { RefreshCw, Database, Download, Upload, HardDrive, FileJson, Cloud, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight, Terminal, Table as TableIcon, Flame } from 'lucide-react';
+import { RefreshCw, Database, Download, Upload, HardDrive, FileJson, Cloud, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight, Terminal, Table as TableIcon, Mail } from 'lucide-react';
 
 interface SettingsProps {
   onDataReset: () => void;
@@ -14,6 +14,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
   const [settings, setSettings] = useState<AppSettings>({
     dataSource: 'Local',
     demoMode: true,
+    maintenanceEmail: '',
     firebaseConfig: {
       apiKey: '',
       authDomain: '',
@@ -196,6 +197,43 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
         </div>
       </div>
 
+      {/* Notification Settings */}
+      {(userRole === 'Superuser' || userRole === 'Manager') && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-6 border-b border-slate-200 bg-blue-50/50">
+             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+               <Mail size={20} className="text-blue-600" /> Notifications
+             </h3>
+             <p className="text-sm text-slate-500 mt-1">Configure email alerts for maintenance and system events.</p>
+          </div>
+          <div className="p-6">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Maintenance Alert Email</label>
+                <input 
+                  type="email" 
+                  className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="maintenance@staysync.hotel"
+                  value={settings.maintenanceEmail || ''}
+                  onChange={(e) => setSettings({...settings, maintenanceEmail: e.target.value})}
+                />
+                <p className="text-xs text-slate-400 mt-1">Requests and resolutions will be sent to this address.</p>
+              </div>
+            </div>
+            <div className="flex justify-end pt-4">
+              <button 
+                onClick={handleSaveSettings}
+                disabled={isSaving}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-70 flex items-center gap-2"
+              >
+                {isSaving ? <RefreshCw className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
+                Save Email Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cloud Configuration Section */}
       {userRole === 'Superuser' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden border-l-4 border-l-orange-500">
@@ -314,7 +352,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
                 className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-70 flex items-center gap-2"
               >
                 {isSaving ? <RefreshCw className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
-                Save Configuration
+                Save Cloud Config
               </button>
             </div>
           </div>

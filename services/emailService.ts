@@ -1,4 +1,5 @@
 import { MaintenanceTicket } from '../types';
+import { StorageService } from './storage';
 
 const API_URL = 'http://localhost:3000';
 
@@ -7,9 +8,12 @@ const API_URL = 'http://localhost:3000';
  */
 export const sendMaintenanceRequestEmail = async (ticket: MaintenanceTicket): Promise<boolean> => {
   try {
+    const settings = await StorageService.getSettings();
+    const toEmail = settings.maintenanceEmail || 'maintenance@staysync.hotel';
+
     // Construct the email payload
     const payload = {
-      to: 'jruizdesign@gmail.com', // In production, fetch this from AppSettings
+      to: toEmail,
       subject: `[${ticket.priority.toUpperCase()}] New Issue in Room ${ticket.roomNumber}`,
       body: `MAINTENANCE REQUEST\n\nRoom: ${ticket.roomNumber}\nPriority: ${ticket.priority}\nReported By: ${ticket.reportedBy}\nDate: ${ticket.date}\n\nDescription:\n${ticket.description}`
     };
@@ -39,8 +43,12 @@ export const sendMaintenanceRequestEmail = async (ticket: MaintenanceTicket): Pr
  */
 export const sendMaintenanceResolvedEmail = async (ticket: MaintenanceTicket, cost: number, notes: string): Promise<boolean> => {
   try {
+    const settings = await StorageService.getSettings();
+    // Default to maintenance email for resolution report as well, or manager if preferred
+    const toEmail = settings.maintenanceEmail || 'maintenance@staysync.hotel';
+
     const payload = {
-      to: 'jruizdesign@gmail.com', // In production, fetch this from AppSettings
+      to: toEmail,
       subject: `Ticket Resolved - Room ${ticket.roomNumber}`,
       body: `TICKET RESOLVED\n\nTicket ID: ${ticket.id}\nRoom: ${ticket.roomNumber}\n\nTotal Cost: $${cost.toFixed(2)}\n\nResolution Notes:\n${notes}\n\nStatus: Closed`
     };

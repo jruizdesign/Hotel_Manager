@@ -124,6 +124,7 @@ export interface FirebaseConfig {
 export interface AppSettings {
   dataSource: DataSource;
   demoMode: boolean;
+  maintenanceEmail?: string;
   firebaseConfig?: FirebaseConfig;
   // Legacy
   apiBaseUrl?: string;

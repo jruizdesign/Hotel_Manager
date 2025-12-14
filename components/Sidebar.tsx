@@ -42,7 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
           }`}>
             {userRole === 'Superuser' ? 'System Admin' : userRole}
           </span>
-          <p className="text-xs text-slate-500">v3.5</p>
+          <p className="text-xs text-slate-500">v4.0</p>
         </div>
       </div>
 

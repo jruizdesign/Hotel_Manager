@@ -13,8 +13,8 @@ import MaintenancePanel from './components/MaintenancePanel';
 import DocumentCenter from './components/DocumentCenter';
 import FeatureRequestPanel from './components/FeatureRequestPanel';
 import TerminalAuth from './components/TerminalAuth';
-import DailyReport from './components/DailyReport'; // New Import
-import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest, AttendanceLog, AttendanceAction } from './types';
+import DailyReport from './components/DailyReport'; 
+import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest, AttendanceLog, AttendanceAction, DNRRecord } from './types';
 import { StorageService } from './services/storage';
 import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
 import { Wrench, Loader2, Mail, AlertTriangle } from 'lucide-react';
@@ -35,11 +35,12 @@ const App: React.FC = () => {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceTicket[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]); // New State
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [history, setHistory] = useState<BookingHistory[]>([]);
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
   const [featureRequests, setFeatureRequests] = useState<FeatureRequest[]>([]);
+  const [dnrRecords, setDnrRecords] = useState<DNRRecord[]>([]); // New State
 
   // Toast Notification State
   const [toast, setToast] = useState<{ message: string; subtext?: string; type?: 'success' | 'error' } | null>(null);
@@ -80,7 +81,7 @@ const App: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedAttendance, fetchedTrans, fetchedHistory, fetchedDocs, fetchedFeatures] = await Promise.all([
+      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedAttendance, fetchedTrans, fetchedHistory, fetchedDocs, fetchedFeatures, fetchedDNR] = await Promise.all([
         StorageService.getRooms(),
         StorageService.getGuests(),
         StorageService.getMaintenance(),
@@ -89,7 +90,8 @@ const App: React.FC = () => {
         StorageService.getTransactions(),
         StorageService.getHistory(),
         StorageService.getDocuments(),
-        StorageService.getFeatureRequests()
+        StorageService.getFeatureRequests(),
+        StorageService.getDNRRecords()
       ]);
 
       setRooms(fetchedRooms);
@@ -101,6 +103,7 @@ const App: React.FC = () => {
       setHistory(fetchedHistory);
       setDocuments(fetchedDocs);
       setFeatureRequests(fetchedFeatures);
+      setDnrRecords(fetchedDNR);
     } catch (error) {
       console.error("Failed to load application data", error);
     } finally {
@@ -586,6 +589,43 @@ const App: React.FC = () => {
       console.error("Failed to delete feature request", error);
     }
   };
+  
+  // --- New Handlers for DNR ---
+  
+  const handleAddDNR = async (record: Omit<DNRRecord, 'id' | 'dateAdded'>) => {
+    try {
+      const newRecord: DNRRecord = {
+        ...record,
+        id: `dnr-${Date.now()}`,
+        dateAdded: new Date().toISOString()
+      };
+      const updatedDNR = [newRecord, ...dnrRecords];
+      setDnrRecords(updatedDNR);
+      await StorageService.saveDNRRecords(updatedDNR);
+      setToast({ message: 'Added to Do Not Rent List', subtext: newRecord.name });
+    } catch (error) {
+      console.error("Failed to add DNR record", error);
+      setToast({ message: 'Error', subtext: 'Failed to save record.', type: 'error' });
+    }
+  };
+
+  const handleDeleteDNR = async (id: string) => {
+    if (currentUser?.role !== 'Manager' && currentUser?.role !== 'Superuser') {
+      alert("Only Managers can remove names from this list.");
+      return;
+    }
+    
+    if (window.confirm("Remove this person from the Do Not Rent list?")) {
+      try {
+        const updatedDNR = dnrRecords.filter(r => r.id !== id);
+        setDnrRecords(updatedDNR);
+        await StorageService.saveDNRRecords(updatedDNR);
+        setToast({ message: 'Record Removed', subtext: 'Person removed from blocklist.' });
+      } catch (error) {
+        console.error("Failed to delete DNR record", error);
+      }
+    }
+  };
 
   // --- Render Logic ---
 
@@ -661,12 +701,15 @@ const App: React.FC = () => {
         return (
           <GuestList 
             guests={guests}
-            rooms={rooms} // Pass rooms to calculate rates
-            transactions={transactions} // Pass transactions to show billing history
+            rooms={rooms} 
+            transactions={transactions} 
             history={history}
+            dnrRecords={dnrRecords} // Pass DNR records
             onAddGuest={handleAddGuest}
             onUpdateGuest={handleUpdateGuest}
-            onAddPayment={handleAddPayment} // Pass payment handler
+            onAddPayment={handleAddPayment} 
+            onAddDNR={handleAddDNR} // Pass handler
+            onDeleteDNR={handleDeleteDNR} // Pass handler
             userRole={currentUser.role}
             externalBookingRequest={bookingRequest}
             onClearExternalRequest={() => setBookingRequest({ isOpen: false })}

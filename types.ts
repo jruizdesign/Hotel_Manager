@@ -110,6 +110,15 @@ export interface FeatureRequest {
   submittedDate: string;
 }
 
+export interface DNRRecord {
+  id: string;
+  name: string;
+  reason: string;
+  notes: string;
+  photo?: string; // Base64 encoded string
+  dateAdded: string;
+}
+
 export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings' | 'reports';
 
 export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';

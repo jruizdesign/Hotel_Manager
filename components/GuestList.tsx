@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { Guest, UserRole, BookingHistory, Room, Transaction, RoomStatus } from '../types';
-import { Users, Plus, X, Search, Calendar, Star, AlertCircle, History, Clock, UserCheck, UserPlus, Receipt, DollarSign, CheckCircle2, Pencil } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Guest, UserRole, BookingHistory, Room, Transaction, RoomStatus, DNRRecord } from '../types';
+import { Users, Plus, X, Search, Calendar, Star, AlertCircle, History, Clock, UserCheck, UserPlus, Receipt, DollarSign, CheckCircle2, Pencil, Ban, Trash2, Camera, Upload } from 'lucide-react';
 
 interface GuestListProps {
   guests: Guest[];
   rooms: Room[]; // Needed for calculating billing rates
   transactions: Transaction[]; // Needed for history
   history?: BookingHistory[];
+  dnrRecords?: DNRRecord[]; // Optional for backwards compatibility, but should be passed
   onAddGuest: (guest: Omit<Guest, 'id'>) => boolean;
   onUpdateGuest: (guest: Guest) => void;
   onAddPayment: (guestId: string, amount: number, date: string, note: string) => void;
+  onAddDNR?: (record: Omit<DNRRecord, 'id' | 'dateAdded'>) => void;
+  onDeleteDNR?: (id: string) => void;
   userRole: UserRole;
   externalBookingRequest?: {
     isOpen: boolean;
@@ -23,18 +26,23 @@ const GuestList: React.FC<GuestListProps> = ({
   rooms,
   transactions,
   history = [], 
+  dnrRecords = [],
   onAddGuest, 
   onUpdateGuest,
   onAddPayment,
+  onAddDNR,
+  onDeleteDNR,
   userRole, 
   externalBookingRequest, 
   onClearExternalRequest 
 }) => {
+  const [activeTab, setActiveTab] = useState<'directory' | 'dnr'>('directory');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDNRModalOpen, setIsDNRModalOpen] = useState(false); // New DNR Modal State
   const [editingGuestId, setEditingGuestId] = useState<string | null>(null);
 
-  const [billingGuest, setBillingGuest] = useState<Guest | null>(null); // For billing modal
-  const [historyGuest, setHistoryGuest] = useState<Guest | null>(null); // For history modal
+  const [billingGuest, setBillingGuest] = useState<Guest | null>(null); 
+  const [historyGuest, setHistoryGuest] = useState<Guest | null>(null); 
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isReturningUser, setIsReturningUser] = useState(false);
@@ -52,6 +60,15 @@ const GuestList: React.FC<GuestListProps> = ({
     balance: 0
   });
 
+  // New DNR Form State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dnrForm, setDnrForm] = useState<{name: string, reason: string, notes: string, photo: string}>({
+    name: '',
+    reason: '',
+    notes: '',
+    photo: ''
+  });
+
   // Payment Form State
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
@@ -60,6 +77,7 @@ const GuestList: React.FC<GuestListProps> = ({
   // Handle external triggers
   useEffect(() => {
     if (externalBookingRequest?.isOpen) {
+      setActiveTab('directory');
       resetForm();
       setIsModalOpen(true);
       setError(null);
@@ -108,6 +126,11 @@ const GuestList: React.FC<GuestListProps> = ({
     guest.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     guest.roomNumber.includes(searchTerm) ||
     guest.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredDNR = dnrRecords.filter(record => 
+    record.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    record.reason.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // --- Calculations for Billing ---
@@ -183,6 +206,33 @@ const GuestList: React.FC<GuestListProps> = ({
     setPaymentAmount('');
     setPaymentNote('');
   };
+  
+  // --- DNR Handlers ---
+  
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setDnrForm(prev => ({ ...prev, photo: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDNRSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (onAddDNR) {
+      onAddDNR({
+        name: dnrForm.name,
+        reason: dnrForm.reason,
+        notes: dnrForm.notes,
+        photo: dnrForm.photo
+      });
+      setIsDNRModalOpen(false);
+      setDnrForm({ name: '', reason: '', notes: '', photo: '' });
+    }
+  };
 
   // Get the up-to-date billing guest object from the main list
   const activeBillingGuest = billingGuest ? guests.find(g => g.id === billingGuest.id) : null;
@@ -203,132 +253,219 @@ const GuestList: React.FC<GuestListProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header & Actions */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Users className="text-emerald-600" /> Guest Directory
-          </h2>
-          <p className="text-sm text-slate-500">Manage bookings, check-ins, and finances.</p>
-        </div>
-        
-        <div className="flex gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:flex-none">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Search guests..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none w-full sm:w-64"
-            />
-          </div>
-          {canEdit && (
-            <button 
-              onClick={() => { resetForm(); setIsModalOpen(true); }}
-              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
-            >
-              <Plus size={18} /> <span className="hidden sm:inline">Add Booking</span>
-            </button>
-          )}
-        </div>
+      {/* Header & Tabs */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+         <div>
+            <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+               <Users className="text-emerald-600" /> Guest Management
+            </h2>
+            <div className="flex gap-4 mt-4 border-b border-slate-200 w-full md:w-auto">
+               <button 
+                 onClick={() => setActiveTab('directory')}
+                 className={`pb-2 text-sm font-bold flex items-center gap-2 transition-all ${
+                   activeTab === 'directory' 
+                   ? 'border-b-2 border-emerald-500 text-emerald-700' 
+                   : 'text-slate-500 hover:text-slate-700'
+                 }`}
+               >
+                 Guest Directory
+               </button>
+               <button 
+                 onClick={() => setActiveTab('dnr')}
+                 className={`pb-2 text-sm font-bold flex items-center gap-2 transition-all ${
+                   activeTab === 'dnr' 
+                   ? 'border-b-2 border-red-500 text-red-700' 
+                   : 'text-slate-500 hover:text-red-600'
+                 }`}
+               >
+                 <Ban size={16} /> Do Not Rent List
+               </button>
+            </div>
+         </div>
+
+         <div className="flex gap-2 w-full md:w-auto">
+             <div className="relative flex-1 md:flex-none">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  type="text" 
+                  placeholder={activeTab === 'directory' ? "Search guests..." : "Search blocked list..."}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none w-full md:w-64"
+                />
+             </div>
+             
+             {canEdit && activeTab === 'directory' && (
+                <button 
+                  onClick={() => { resetForm(); setIsModalOpen(true); }}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
+                >
+                  <Plus size={18} /> New Booking
+                </button>
+             )}
+
+             {canEdit && activeTab === 'dnr' && (
+                <button 
+                  onClick={() => setIsDNRModalOpen(true)}
+                  className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
+                >
+                  <Plus size={18} /> Add to List
+                </button>
+             )}
+         </div>
       </div>
 
-      {/* Guest Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase">
-              <tr>
-                <th className="px-6 py-4">Guest Details</th>
-                <th className="px-6 py-4">Room</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Balance</th>
-                <th className="px-6 py-4">Stay Duration</th>
-                <th className="px-6 py-4 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredGuests.length > 0 ? (
-                filteredGuests.map(g => {
-                   const estCharges = calculateAccruedCharges(g);
-                   const paid = calculateTotalPaid(g.id);
-                   const currentBalance = estCharges - paid;
-                   
-                   return (
-                    <tr key={g.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <p className="font-bold text-slate-800">{g.name} {g.vip && <Star size={12} className="inline text-amber-400 mb-1" fill="currentColor" />}</p>
-                        <p className="text-xs text-slate-500">{g.email}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="font-mono bg-slate-100 px-2 py-1 rounded text-slate-700">#{g.roomNumber}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                          g.status === 'Checked In' ? 'bg-emerald-100 text-emerald-700' :
-                          g.status === 'Reserved' ? 'bg-blue-100 text-blue-700' :
-                          'bg-slate-100 text-slate-600'
-                        }`}>
-                          {g.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                           <span className={`font-bold ${currentBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                             ${Math.abs(currentBalance).toLocaleString()}
-                           </span>
-                           <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
-                             {currentBalance > 0 ? 'Due' : 'Paid'}
-                           </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-slate-700">
-                          <Calendar size={14} className="text-slate-400" />
-                          <span>{g.checkIn}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center flex items-center justify-center gap-2">
-                         {canEdit && (
-                           <>
-                              <button 
-                                onClick={() => handleEditClick(g)}
-                                className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                title="Edit Guest Details"
-                              >
-                                <Pencil size={18} />
-                              </button>
-                              <button 
-                                onClick={() => setBillingGuest(g)}
-                                className="flex items-center gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
-                              >
-                                <DollarSign size={14} /> Bill
-                              </button>
-                           </>
-                         )}
-                        <button 
-                          onClick={() => setHistoryGuest(g)}
-                          className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"
-                          title="View History"
-                        >
-                          <History size={18} />
-                        </button>
-                      </td>
-                    </tr>
-                   );
-                })
-              ) : (
+      {/* --- GUEST DIRECTORY TAB --- */}
+      {activeTab === 'directory' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-left-2">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase">
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
-                    No guests found matching your search.
-                  </td>
+                  <th className="px-6 py-4">Guest Details</th>
+                  <th className="px-6 py-4">Room</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Balance</th>
+                  <th className="px-6 py-4">Stay Duration</th>
+                  <th className="px-6 py-4 text-center">Actions</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredGuests.length > 0 ? (
+                  filteredGuests.map(g => {
+                    const estCharges = calculateAccruedCharges(g);
+                    const paid = calculateTotalPaid(g.id);
+                    const currentBalance = estCharges - paid;
+                    
+                    return (
+                      <tr key={g.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <p className="font-bold text-slate-800">{g.name} {g.vip && <Star size={12} className="inline text-amber-400 mb-1" fill="currentColor" />}</p>
+                          <p className="text-xs text-slate-500">{g.email}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="font-mono bg-slate-100 px-2 py-1 rounded text-slate-700">#{g.roomNumber}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                            g.status === 'Checked In' ? 'bg-emerald-100 text-emerald-700' :
+                            g.status === 'Reserved' ? 'bg-blue-100 text-blue-700' :
+                            'bg-slate-100 text-slate-600'
+                          }`}>
+                            {g.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className={`font-bold ${currentBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                              ${Math.abs(currentBalance).toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                              {currentBalance > 0 ? 'Due' : 'Paid'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 text-slate-700">
+                            <Calendar size={14} className="text-slate-400" />
+                            <span>{g.checkIn}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center flex items-center justify-center gap-2">
+                          {canEdit && (
+                            <>
+                                <button 
+                                  onClick={() => handleEditClick(g)}
+                                  className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                  title="Edit Guest Details"
+                                >
+                                  <Pencil size={18} />
+                                </button>
+                                <button 
+                                  onClick={() => setBillingGuest(g)}
+                                  className="flex items-center gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  <DollarSign size={14} /> Bill
+                                </button>
+                            </>
+                          )}
+                          <button 
+                            onClick={() => setHistoryGuest(g)}
+                            className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                            title="View History"
+                          >
+                            <History size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                      No guests found matching your search.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* --- DO NOT RENT TAB --- */}
+      {activeTab === 'dnr' && (
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-right-2">
+            {filteredDNR.length > 0 ? (
+               filteredDNR.map(record => (
+                 <div key={record.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col group hover:shadow-md transition-shadow">
+                    <div className="h-48 bg-slate-100 relative">
+                       {record.photo ? (
+                         <img src={record.photo} alt={record.name} className="w-full h-full object-cover" />
+                       ) : (
+                         <div className="w-full h-full flex items-center justify-center text-slate-300">
+                           <Camera size={48} />
+                         </div>
+                       )}
+                       <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] uppercase font-bold px-2 py-1 rounded shadow-sm">
+                          Do Not Rent
+                       </div>
+                    </div>
+                    
+                    <div className="p-5 flex-1 flex flex-col">
+                       <h3 className="text-lg font-bold text-slate-800">{record.name}</h3>
+                       <p className="text-sm text-red-600 font-medium mt-1">{record.reason}</p>
+                       
+                       <div className="mt-4 pt-4 border-t border-slate-100 flex-1">
+                          <p className="text-sm text-slate-500 italic">"{record.notes}"</p>
+                       </div>
+
+                       <div className="mt-4 flex justify-between items-center text-xs text-slate-400">
+                          <span>Added: {new Date(record.dateAdded).toLocaleDateString()}</span>
+                          {onDeleteDNR && (
+                             <button 
+                               onClick={() => onDeleteDNR(record.id)}
+                               className="text-slate-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
+                               title="Remove from list"
+                             >
+                               <Trash2 size={16} />
+                             </button>
+                          )}
+                       </div>
+                    </div>
+                 </div>
+               ))
+            ) : (
+              <div className="col-span-full py-16 text-center bg-white rounded-xl border border-dashed border-slate-300">
+                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                  <CheckCircle2 size={32} />
+                </div>
+                <p className="text-slate-500 font-medium">No blocked names found.</p>
+                <p className="text-sm text-slate-400 mt-1">Use the "Add to List" button to flag problematic guests.</p>
+              </div>
+            )}
+         </div>
+      )}
 
       {/* BILLING MODAL */}
       {activeBillingGuest && (
@@ -678,6 +815,89 @@ const GuestList: React.FC<GuestListProps> = ({
                   {editingGuestId ? 'Save Changes' : 'Complete Booking'}
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- ADD DNR MODAL --- */}
+      {isDNRModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-red-600 px-6 py-4 flex justify-between items-center text-white">
+               <h3 className="text-lg font-bold flex items-center gap-2">
+                 <Ban size={20} /> Block List Entry
+               </h3>
+               <button onClick={() => setIsDNRModalOpen(false)} className="text-red-100 hover:text-white">
+                 <X size={20} />
+               </button>
+            </div>
+            
+            <form onSubmit={handleDNRSubmit} className="p-6 space-y-4">
+               <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                  <input 
+                    type="text" required
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                    value={dnrForm.name}
+                    onChange={e => setDnrForm({...dnrForm, name: e.target.value})}
+                  />
+               </div>
+
+               <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Reason for Block</label>
+                  <input 
+                    type="text" required
+                    placeholder="e.g. Non-Payment, Property Damage"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                    value={dnrForm.reason}
+                    onChange={e => setDnrForm({...dnrForm, reason: e.target.value})}
+                  />
+               </div>
+
+               <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                  <textarea 
+                    rows={3}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none resize-none"
+                    value={dnrForm.notes}
+                    onChange={e => setDnrForm({...dnrForm, notes: e.target.value})}
+                  />
+               </div>
+
+               <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Photo Identification</label>
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${dnrForm.photo ? 'border-red-400 bg-red-50' : 'border-slate-300 hover:border-red-400 hover:bg-slate-50'}`}
+                  >
+                     <input 
+                       type="file" 
+                       ref={fileInputRef} 
+                       accept="image/*"
+                       className="hidden" 
+                       onChange={handlePhotoUpload}
+                     />
+                     {dnrForm.photo ? (
+                        <div className="flex flex-col items-center text-red-700">
+                           <img src={dnrForm.photo} alt="Preview" className="w-16 h-16 object-cover rounded-full mb-2 border border-red-200" />
+                           <p className="text-xs font-bold">Photo Attached</p>
+                        </div>
+                     ) : (
+                        <div className="text-slate-500">
+                           <Upload className="mx-auto mb-2" size={24} />
+                           <p className="text-sm font-medium">Click to upload photo</p>
+                        </div>
+                     )}
+                  </div>
+               </div>
+
+               <button 
+                 type="submit"
+                 className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-bold shadow-sm mt-2 transition-colors"
+               >
+                 Add to Do Not Rent List
+               </button>
             </form>
           </div>
         </div>

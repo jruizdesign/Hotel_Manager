@@ -1,9 +1,9 @@
-import * as firebaseApp from "firebase/app";
+import { initializeApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
 import { AppSettings } from "../types";
 
 let dbInstance: Firestore | null = null;
-let appInstance: any = null;
+let appInstance: FirebaseApp | null = null;
 
 export const initializeFirebase = (settings: AppSettings): Firestore | null => {
   if (!settings.firebaseConfig || !settings.firebaseConfig.apiKey) {
@@ -20,8 +20,8 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
   }
 
   try {
-    // Use namespace import to access initializeApp
-    appInstance = firebaseApp.initializeApp(settings.firebaseConfig);
+    // Use named import to access initializeApp
+    appInstance = initializeApp(settings.firebaseConfig);
     dbInstance = getFirestore(appInstance);
     return dbInstance;
   } catch (error) {

@@ -12,7 +12,8 @@ import SetupWizard from './components/SetupWizard';
 import MaintenancePanel from './components/MaintenancePanel';
 import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket } from './types';
 import { StorageService } from './services/storage';
-import { Wrench, Loader2 } from 'lucide-react';
+import { Wrench, Loader2, CheckCircle, Mail } from 'lucide-react';
+import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -27,6 +28,9 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [history, setHistory] = useState<BookingHistory[]>([]);
 
+  // Toast Notification State
+  const [toast, setToast] = useState<{ message: string; subtext?: string } | null>(null);
+
   // Navigation State for External Triggers
   const [bookingRequest, setBookingRequest] = useState<{ isOpen: boolean, roomNumber?: string }>({ isOpen: false });
 
@@ -34,6 +38,14 @@ const App: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Toast Timer
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -199,14 +211,20 @@ const App: React.FC = () => {
     };
     const updatedMaintenance = [newTicket, ...maintenance];
     setMaintenance(updatedMaintenance);
-    
-    // If associated with a room, potentially mark room as Maintenance? 
-    // For now, we keep it decoupled unless manual room status change.
     await StorageService.saveMaintenance(updatedMaintenance);
+
+    // Trigger Email Notification
+    sendMaintenanceRequestEmail(newTicket).then(() => {
+      setToast({
+        message: 'Maintenance Team Notified',
+        subtext: `Email sent for Room ${newTicket.roomNumber} (${newTicket.priority} Priority)`
+      });
+    });
   };
 
   const handleResolveTicket = async (ticketId: string, cost: number, note: string) => {
      const today = new Date().toISOString().split('T')[0];
+     const ticket = maintenance.find(t => t.id === ticketId);
      
      // 1. Update Ticket
      const updatedMaintenance = maintenance.map(t => 
@@ -235,6 +253,16 @@ const App: React.FC = () => {
        StorageService.saveMaintenance(updatedMaintenance),
        StorageService.saveTransactions(updatedTransactions)
      ]);
+
+     // Trigger Email Notification
+     if (ticket) {
+        sendMaintenanceResolvedEmail(ticket, cost, note).then(() => {
+          setToast({
+            message: 'Resolution Report Sent',
+            subtext: `Manager notified of completion and cost ($${cost})`
+          });
+        });
+     }
   };
 
   // NOTE: This function needs to return boolean for success/fail UI feedback, 
@@ -464,7 +492,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-slate-50 relative">
       <Sidebar 
         currentView={currentView} 
         setView={setView} 
@@ -501,6 +529,21 @@ const App: React.FC = () => {
       {/* Setup Wizard Overlay - Only shows if rooms are empty (meaning not in demo and not setup) */}
       {!isLoading && rooms.length === 0 && (currentUser.role === 'Manager' || currentUser.role === 'Superuser') && (
         <SetupWizard onComplete={handleSetupComplete} />
+      )}
+
+      {/* Global Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div className="bg-slate-900 text-white pl-4 pr-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 border border-slate-700">
+            <div className="bg-emerald-500/20 p-2 rounded-full text-emerald-400">
+              <Mail size={18} />
+            </div>
+            <div>
+              <p className="font-bold text-sm">{toast.message}</p>
+              {toast.subtext && <p className="text-xs text-slate-400">{toast.subtext}</p>}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

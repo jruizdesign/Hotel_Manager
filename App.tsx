@@ -13,7 +13,7 @@ import MaintenancePanel from './components/MaintenancePanel';
 import DocumentCenter from './components/DocumentCenter';
 import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument } from './types';
 import { StorageService } from './services/storage';
-import { Wrench, Loader2, CheckCircle, Mail } from 'lucide-react';
+import { Wrench, Loader2, CheckCircle, Mail, AlertTriangle } from 'lucide-react';
 import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
 
 const App: React.FC = () => {
@@ -31,7 +31,7 @@ const App: React.FC = () => {
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
 
   // Toast Notification State
-  const [toast, setToast] = useState<{ message: string; subtext?: string } | null>(null);
+  const [toast, setToast] = useState<{ message: string; subtext?: string; type?: 'success' | 'error' } | null>(null);
 
   // Navigation State for External Triggers
   const [bookingRequest, setBookingRequest] = useState<{ isOpen: boolean, roomNumber?: string }>({ isOpen: false });
@@ -179,93 +179,131 @@ const App: React.FC = () => {
 
     if (!window.confirm(`Confirm Check Out for Room ${room.number}? This will mark the room as Dirty.`)) return;
 
-    // 1. Update Guest Status
-    const todayStr = new Date().toISOString().split('T')[0];
-    let guestUpdated = false;
-    const updatedGuests = guests.map(g => {
-      if (g.id === room.guestId) {
-        guestUpdated = true;
-        return { ...g, status: 'Checked Out' as const, checkOut: todayStr };
-      }
-      return g;
-    });
+    try {
+      // 1. Update Guest Status
+      const todayStr = new Date().toISOString().split('T')[0];
+      const updatedGuests = guests.map(g => {
+        if (g.id === room.guestId) {
+          return { ...g, status: 'Checked Out' as const, checkOut: todayStr };
+        }
+        return g;
+      });
 
-    // 2. Update Room Status
-    const updatedRooms = rooms.map(r => 
-      r.id === roomId ? { ...r, status: RoomStatus.DIRTY, guestId: undefined } : r
-    );
+      // 2. Update Room Status
+      const updatedRooms = rooms.map(r => 
+        r.id === roomId ? { ...r, status: RoomStatus.DIRTY, guestId: undefined } : r
+      );
 
-    // 3. Save State
-    setGuests(updatedGuests);
-    setRooms(updatedRooms);
+      // 3. Save State
+      setGuests(updatedGuests);
+      setRooms(updatedRooms);
 
-    await Promise.all([
-      StorageService.saveGuests(updatedGuests),
-      StorageService.saveRooms(updatedRooms)
-    ]);
+      await Promise.all([
+        StorageService.saveGuests(updatedGuests),
+        StorageService.saveRooms(updatedRooms)
+      ]);
+      
+      setToast({ message: 'Check Out Complete', subtext: `Room ${room.number} is now Dirty.` });
+    } catch (err) {
+      console.error("Check out failed", err);
+      setToast({ message: 'Check Out Failed', subtext: 'Could not save data. Please try again.', type: 'error' });
+    }
   };
 
   // Maintenance Handlers
   const handleAddTicket = async (ticketData: Omit<MaintenanceTicket, 'id' | 'status' | 'date'>) => {
-    const newTicket: MaintenanceTicket = {
-      ...ticketData,
-      id: Date.now().toString(),
-      status: 'Pending',
-      date: new Date().toISOString().split('T')[0]
-    };
-    const updatedMaintenance = [newTicket, ...maintenance];
-    setMaintenance(updatedMaintenance);
-    await StorageService.saveMaintenance(updatedMaintenance);
+    try {
+      const newTicket: MaintenanceTicket = {
+        ...ticketData,
+        id: Date.now().toString(),
+        status: 'Pending',
+        date: new Date().toISOString().split('T')[0]
+      };
+      
+      // Update UI first
+      const updatedMaintenance = [newTicket, ...maintenance];
+      setMaintenance(updatedMaintenance);
+      await StorageService.saveMaintenance(updatedMaintenance);
 
-    // Trigger Email Notification
-    sendMaintenanceRequestEmail(newTicket).then(() => {
-      setToast({
-        message: 'Maintenance Team Notified',
-        subtext: `Email sent for Room ${newTicket.roomNumber} (${newTicket.priority} Priority)`
-      });
-    });
+      // Trigger Email Notification with response handling
+      sendMaintenanceRequestEmail(newTicket)
+        .then(() => {
+          setToast({
+            message: 'Maintenance Team Notified',
+            subtext: `Email sent for Room ${newTicket.roomNumber} (${newTicket.priority} Priority)`
+          });
+        })
+        .catch((err) => {
+          console.error("Email notification failed", err);
+          // Ensure we call 'sendResponse' equivalent (UI feedback) even on failure
+          setToast({
+            message: 'Ticket Created',
+            subtext: 'Warning: Email notification failed to send.',
+            type: 'error'
+          });
+        });
+
+    } catch (error) {
+      console.error("Failed to add ticket", error);
+      alert("System Error: Could not save maintenance ticket.");
+    }
   };
 
   const handleResolveTicket = async (ticketId: string, cost: number, note: string) => {
-     const today = new Date().toISOString().split('T')[0];
-     const ticket = maintenance.find(t => t.id === ticketId);
-     
-     // 1. Update Ticket
-     const updatedMaintenance = maintenance.map(t => 
-       t.id === ticketId 
-         ? { ...t, status: 'Resolved' as const, cost, completedDate: today } 
-         : t
-     );
-     setMaintenance(updatedMaintenance);
+     try {
+       const today = new Date().toISOString().split('T')[0];
+       const ticket = maintenance.find(t => t.id === ticketId);
+       
+       // 1. Update Ticket
+       const updatedMaintenance = maintenance.map(t => 
+         t.id === ticketId 
+           ? { ...t, status: 'Resolved' as const, cost, completedDate: today } 
+           : t
+       );
+       setMaintenance(updatedMaintenance);
 
-     // 2. Create Transaction for Accounting
-     let updatedTransactions = transactions;
-     if (cost > 0) {
-       const newTx: Transaction = {
-         id: `tx-${Date.now()}`,
-         date: today,
-         category: 'Maintenance Cost',
-         type: 'Expense',
-         amount: cost,
-         description: `Ticket #${ticketId} Resolution: ${note}`
-       };
-       updatedTransactions = [newTx, ...transactions];
-       setTransactions(updatedTransactions);
-     }
+       // 2. Create Transaction for Accounting
+       let updatedTransactions = transactions;
+       if (cost > 0) {
+         const newTx: Transaction = {
+           id: `tx-${Date.now()}`,
+           date: today,
+           category: 'Maintenance Cost',
+           type: 'Expense',
+           amount: cost,
+           description: `Ticket #${ticketId} Resolution: ${note}`
+         };
+         updatedTransactions = [newTx, ...transactions];
+         setTransactions(updatedTransactions);
+       }
 
-     await Promise.all([
-       StorageService.saveMaintenance(updatedMaintenance),
-       StorageService.saveTransactions(updatedTransactions)
-     ]);
+       await Promise.all([
+         StorageService.saveMaintenance(updatedMaintenance),
+         StorageService.saveTransactions(updatedTransactions)
+       ]);
 
-     // Trigger Email Notification
-     if (ticket) {
-        sendMaintenanceResolvedEmail(ticket, cost, note).then(() => {
-          setToast({
-            message: 'Resolution Report Sent',
-            subtext: `Manager notified of completion and cost ($${cost})`
-          });
-        });
+       // Trigger Email Notification with response handling
+       if (ticket) {
+          sendMaintenanceResolvedEmail(ticket, cost, note)
+            .then(() => {
+              setToast({
+                message: 'Resolution Report Sent',
+                subtext: `Manager notified of completion and cost ($${cost})`
+              });
+            })
+            .catch((err) => {
+              console.error("Email notification failed", err);
+              // Ensure feedback is provided regardless of success/fail
+              setToast({
+                message: 'Ticket Resolved',
+                subtext: 'Warning: Resolution email failed to send.',
+                type: 'error'
+              });
+            });
+       }
+     } catch (error) {
+       console.error("Failed to resolve ticket", error);
+       alert("System Error: Could not update ticket status.");
      }
   };
 
@@ -290,7 +328,12 @@ const App: React.FC = () => {
     // Optimistic Update
     const updatedGuests = [...guests, newGuest];
     setGuests(updatedGuests);
-    StorageService.saveGuests(updatedGuests).catch(err => console.error("Failed to save guest", err));
+    
+    StorageService.saveGuests(updatedGuests)
+      .catch(err => {
+        console.error("Failed to save guest", err);
+        setToast({ message: 'Save Failed', subtext: 'Data could not be persisted to storage.', type: 'error' });
+      });
 
     if (newGuestData.status === 'Checked In') {
       const updatedRooms = [...rooms];
@@ -300,85 +343,101 @@ const App: React.FC = () => {
         guestId: newGuest.id 
       };
       setRooms(updatedRooms);
-      StorageService.saveRooms(updatedRooms).catch(err => console.error("Failed to update room", err));
+      
+      StorageService.saveRooms(updatedRooms)
+        .catch(err => {
+          console.error("Failed to update room", err);
+          // Note: In a real app we might want to revert state here
+        });
     }
 
     return true;
   };
 
   const handleUpdateGuest = async (updatedGuest: Guest) => {
-    const oldGuest = guests.find(g => g.id === updatedGuest.id);
-    if (!oldGuest) return;
+    try {
+      const oldGuest = guests.find(g => g.id === updatedGuest.id);
+      if (!oldGuest) return;
 
-    // 1. Handle Room Swap if room number changed
-    let currentRooms = [...rooms];
-    if (oldGuest.roomNumber !== updatedGuest.roomNumber) {
-      // Free old room
-      const oldRoomIdx = currentRooms.findIndex(r => r.number === oldGuest.roomNumber);
-      if (oldRoomIdx > -1) {
-        currentRooms[oldRoomIdx] = { ...currentRooms[oldRoomIdx], status: RoomStatus.DIRTY, guestId: undefined };
-      }
-      
-      // Occupy new room
-      const newRoomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
-      if (newRoomIdx > -1) {
-        // Only occupy if we are checking in or already checked in
-        if (updatedGuest.status === 'Checked In') {
-           currentRooms[newRoomIdx] = { ...currentRooms[newRoomIdx], status: RoomStatus.OCCUPIED, guestId: updatedGuest.id };
+      // 1. Handle Room Swap if room number changed
+      let currentRooms = [...rooms];
+      if (oldGuest.roomNumber !== updatedGuest.roomNumber) {
+        // Free old room
+        const oldRoomIdx = currentRooms.findIndex(r => r.number === oldGuest.roomNumber);
+        if (oldRoomIdx > -1) {
+          currentRooms[oldRoomIdx] = { ...currentRooms[oldRoomIdx], status: RoomStatus.DIRTY, guestId: undefined };
+        }
+        
+        // Occupy new room
+        const newRoomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
+        if (newRoomIdx > -1) {
+          // Only occupy if we are checking in or already checked in
+          if (updatedGuest.status === 'Checked In') {
+             currentRooms[newRoomIdx] = { ...currentRooms[newRoomIdx], status: RoomStatus.OCCUPIED, guestId: updatedGuest.id };
+          }
+        } else {
+          alert(`Warning: Room ${updatedGuest.roomNumber} does not exist. Guest updated but room status not linked.`);
         }
       } else {
-        alert(`Warning: Room ${updatedGuest.roomNumber} does not exist. Guest updated but room status not linked.`);
+        // Room didn't change, but check if status changed (e.g. Reserved -> Checked In)
+        const roomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
+        if (roomIdx > -1) {
+           if (oldGuest.status === 'Reserved' && updatedGuest.status === 'Checked In') {
+               currentRooms[roomIdx] = { ...currentRooms[roomIdx], status: RoomStatus.OCCUPIED, guestId: updatedGuest.id };
+           }
+        }
       }
-    } else {
-      // Room didn't change, but check if status changed (e.g. Reserved -> Checked In)
-      const roomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
-      if (roomIdx > -1) {
-         if (oldGuest.status === 'Reserved' && updatedGuest.status === 'Checked In') {
-             currentRooms[roomIdx] = { ...currentRooms[roomIdx], status: RoomStatus.OCCUPIED, guestId: updatedGuest.id };
-         }
-      }
-    }
 
-    // 2. Update Guest List
-    const updatedGuests = guests.map(g => g.id === updatedGuest.id ? updatedGuest : g);
-    
-    // 3. Save State
-    setGuests(updatedGuests);
-    setRooms(currentRooms);
-    
-    await Promise.all([
-      StorageService.saveGuests(updatedGuests),
-      StorageService.saveRooms(currentRooms)
-    ]);
+      // 2. Update Guest List
+      const updatedGuests = guests.map(g => g.id === updatedGuest.id ? updatedGuest : g);
+      
+      // 3. Save State
+      setGuests(updatedGuests);
+      setRooms(currentRooms);
+      
+      await Promise.all([
+        StorageService.saveGuests(updatedGuests),
+        StorageService.saveRooms(currentRooms)
+      ]);
+    } catch (error) {
+      console.error("Failed to update guest", error);
+      setToast({ message: 'Update Failed', subtext: 'Could not save guest changes.', type: 'error' });
+    }
   };
 
   const handleAddPayment = async (guestId: string, amount: number, date: string, note: string) => {
-    const newTransaction: Transaction = {
-      id: Date.now().toString(),
-      date,
-      amount,
-      category: 'Guest Payment',
-      type: 'Income',
-      description: note || 'Room Payment',
-      guestId
-    };
+    try {
+      const newTransaction: Transaction = {
+        id: Date.now().toString(),
+        date,
+        amount,
+        category: 'Guest Payment',
+        type: 'Income',
+        description: note || 'Room Payment',
+        guestId
+      };
 
-    const updatedTransactions = [newTransaction, ...transactions];
-    setTransactions(updatedTransactions);
-    
-    const updatedGuests = guests.map(g => {
-      if (g.id === guestId) {
-        return { ...g, balance: g.balance - amount };
-      }
-      return g;
-    });
-    setGuests(updatedGuests);
+      const updatedTransactions = [newTransaction, ...transactions];
+      setTransactions(updatedTransactions);
+      
+      const updatedGuests = guests.map(g => {
+        if (g.id === guestId) {
+          return { ...g, balance: g.balance - amount };
+        }
+        return g;
+      });
+      setGuests(updatedGuests);
 
-    // Save both
-    await Promise.all([
-      StorageService.saveTransactions(updatedTransactions),
-      StorageService.saveGuests(updatedGuests)
-    ]);
+      // Save both
+      await Promise.all([
+        StorageService.saveTransactions(updatedTransactions),
+        StorageService.saveGuests(updatedGuests)
+      ]);
+      setToast({ message: 'Payment Recorded', subtext: `$${amount} added to ledger.` });
+    } catch (error) {
+      console.error("Payment failed", error);
+      setToast({ message: 'Payment Error', subtext: 'Could not save transaction.', type: 'error' });
+    }
   };
 
   // Staff Handlers
@@ -403,21 +462,26 @@ const App: React.FC = () => {
 
   // Document Handlers
   const handleAddDocument = async (newDocData: Omit<StoredDocument, 'id' | 'date' | 'size'>) => {
-     // Calculate approximate size from base64 length
-     const sizeInBytes = Math.ceil((newDocData.fileData.length * 3) / 4);
-     
-     const newDoc: StoredDocument = {
-       ...newDocData,
-       id: `doc-${Date.now()}`,
-       date: new Date().toISOString(),
-       size: sizeInBytes
-     };
+     try {
+       // Calculate approximate size from base64 length
+       const sizeInBytes = Math.ceil((newDocData.fileData.length * 3) / 4);
+       
+       const newDoc: StoredDocument = {
+         ...newDocData,
+         id: `doc-${Date.now()}`,
+         date: new Date().toISOString(),
+         size: sizeInBytes
+       };
 
-     const updatedDocs = [newDoc, ...documents];
-     setDocuments(updatedDocs);
-     await StorageService.saveDocuments(updatedDocs);
-     
-     setToast({ message: 'Document Saved', subtext: newDoc.title });
+       const updatedDocs = [newDoc, ...documents];
+       setDocuments(updatedDocs);
+       await StorageService.saveDocuments(updatedDocs);
+       
+       setToast({ message: 'Document Saved', subtext: newDoc.title });
+     } catch (error) {
+       console.error("Document save failed", error);
+       setToast({ message: 'Upload Failed', subtext: 'Could not save document to storage.', type: 'error' });
+     }
   };
 
   const handleDeleteDocument = async (id: string) => {
@@ -573,13 +637,13 @@ const App: React.FC = () => {
       {/* Global Toast Notification */}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-5 duration-300">
-          <div className="bg-slate-900 text-white pl-4 pr-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 border border-slate-700">
-            <div className="bg-emerald-500/20 p-2 rounded-full text-emerald-400">
-              <Mail size={18} />
+          <div className={`text-white pl-4 pr-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 border ${toast.type === 'error' ? 'bg-red-900 border-red-700' : 'bg-slate-900 border-slate-700'}`}>
+            <div className={`p-2 rounded-full ${toast.type === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+              {toast.type === 'error' ? <AlertTriangle size={18} /> : <Mail size={18} />}
             </div>
             <div>
               <p className="font-bold text-sm">{toast.message}</p>
-              {toast.subtext && <p className="text-xs text-slate-400">{toast.subtext}</p>}
+              {toast.subtext && <p className={`text-xs ${toast.type === 'error' ? 'text-red-200' : 'text-slate-400'}`}>{toast.subtext}</p>}
             </div>
           </div>
         </div>

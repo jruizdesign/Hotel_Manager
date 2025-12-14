@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Lock, ChevronRight, Server, Building2, AlertCircle, CloudOff, KeyRound, ArrowLeft, Mail, CheckCircle2, UserPlus } from 'lucide-react';
+import { Shield, Lock, ChevronRight, Server, Building2, AlertCircle, CloudOff, KeyRound, ArrowLeft, Mail, CheckCircle2, UserPlus, Info } from 'lucide-react';
 import { loginTerminal, resetTerminalPassword, registerTerminalUser } from '../services/firebase';
 
 const TerminalAuth: React.FC = () => {
@@ -125,6 +125,17 @@ const TerminalAuth: React.FC = () => {
           
           {view === 'login' && (
             <form onSubmit={handleLogin} className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
+              
+              {/* Default Credential Hint */}
+              <div className="bg-blue-900/20 border border-blue-500/30 p-3 rounded-lg flex gap-3 items-start">
+                 <Info className="text-blue-400 shrink-0 mt-0.5" size={16} />
+                 <div className="text-xs text-blue-200">
+                   <p className="font-bold mb-1">Default Login (Offline Mode)</p>
+                   <p>Email: <code className="bg-blue-900/50 px-1 rounded text-white">admin@hotel.com</code></p>
+                   <p>Pass: <code className="bg-blue-900/50 px-1 rounded text-white">password123</code></p>
+                 </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                   Administrator Email

@@ -1,11 +1,22 @@
-import * as firebase from "firebase/app";
+import { initializeApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, User, Auth } from "firebase/auth";
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged, 
+  sendPasswordResetEmail, 
+  createUserWithEmailAndPassword, 
+  updatePassword, 
+  User, 
+  Auth 
+} from "firebase/auth";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { AppSettings } from "../types";
 
 let dbInstance: Firestore | null = null;
 let authInstance: Auth | null = null;
-let appInstance: any | null = null;
+let appInstance: FirebaseApp | null = null;
 
 // Manual subscribers to handle "Offline/Mock" login state updates
 let authSubscribers: ((user: User | null) => void)[] = [];
@@ -27,7 +38,17 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
   }
 
   try {
-    appInstance = firebase.initializeApp(settings.firebaseConfig);
+    appInstance = initializeApp(settings.firebaseConfig);
+
+    // Initialize App Check
+    // Using the site key provided in the integration request
+    if (typeof window !== 'undefined') {
+      initializeAppCheck(appInstance, {
+        provider: new ReCaptchaV3Provider('abcdefghijklmnopqrstuvwxy-1234567890abcd'),
+        isTokenAutoRefreshEnabled: true
+      });
+    }
+
     dbInstance = getFirestore(appInstance);
     authInstance = getAuth(appInstance);
     return dbInstance;
@@ -72,7 +93,7 @@ export const loginTerminal = async (email: string, pass: string) => {
         
         // Notify app that we are logged in
         authSubscribers.forEach(cb => cb(mockUser));
-        return mockUser;
+        return { user: mockUser };
     }
 
     // 2. Standard Firebase Login

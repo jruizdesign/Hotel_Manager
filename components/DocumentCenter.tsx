@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StoredDocument } from '../types';
-import { FileText, Upload, Trash2, Download, Search, Filter, File, X, CheckCircle2 } from 'lucide-react';
+import { FileText, Upload, Trash2, Download, Search, Filter, File as FileIcon, X, CheckCircle2, Camera, ScanLine, Printer, Clipboard, ImagePlus } from 'lucide-react';
 
 interface DocumentCenterProps {
   documents: StoredDocument[];
@@ -11,11 +11,16 @@ interface DocumentCenterProps {
 
 const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocument, onDeleteDocument, userRole }) => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Upload State
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scannerInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
   const [uploadForm, setUploadForm] = useState({
     title: '',
     category: 'Other' as StoredDocument['category'],
@@ -25,26 +30,75 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
     fileName: ''
   });
 
+  // Handle global paste for quick upload
+  useEffect(() => {
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      if (!isUploadModalOpen) return;
+      
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            const blob = items[i].getAsFile();
+            if (blob) processFile(blob);
+            break; // Only take the first image
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => window.removeEventListener('paste', handleGlobalPaste);
+  }, [isUploadModalOpen]);
+
+  const processFile = (file: File) => {
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      alert("File size exceeds 5MB limit.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setUploadForm(prev => ({
+        ...prev,
+        fileData: reader.result as string,
+        fileType: file.type,
+        fileName: file.name,
+        title: prev.title || file.name.split('.')[0]
+      }));
+      // If modal isn't open, open it (for drag-drop cases outside modal)
+      setIsUploadModalOpen(true);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        alert("File size exceeds 5MB limit.");
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        return;
-      }
+    if (file) processFile(file);
+    // Reset inputs so same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (scannerInputRef.current) scannerInputRef.current.value = '';
+  };
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setUploadForm(prev => ({
-          ...prev,
-          fileData: reader.result as string,
-          fileType: file.type,
-          fileName: file.name,
-          title: prev.title || file.name // Auto-fill title if empty
-        }));
-      };
-      reader.readAsDataURL(file);
+  const handlePasteClick = async () => {
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        const imageTypes = item.types.filter(type => type.startsWith('image/'));
+        for (const type of imageTypes) {
+          const blob = await item.getType(type);
+          if (blob) {
+            const file = new File([blob], "Pasted Image", { type });
+            processFile(file);
+            return;
+          }
+        }
+      }
+      alert("No image found in clipboard. Try copying an image first.");
+    } catch (err) {
+      console.error("Clipboard read failed", err);
+      // Fallback: Just focus the area and ask user to press Ctrl+V
+      alert("Please press Ctrl+V to paste the image.");
     }
   };
 
@@ -62,6 +116,59 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
 
     setIsUploadModalOpen(false);
     setUploadForm({ title: '', category: 'Other', description: '', fileData: '', fileType: '', fileName: '' });
+  };
+
+  const startCamera = async () => {
+    setIsScanning(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Camera error", err);
+      alert("Could not access camera. Please check permissions.");
+      setIsScanning(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setIsScanning(false);
+  };
+
+  const captureImage = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      // Set canvas dimensions to match video stream
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // Populate upload form
+        setUploadForm(prev => ({
+          ...prev,
+          fileData: dataUrl,
+          fileType: 'image/jpeg',
+          fileName: `Scan_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.jpg`,
+          title: prev.title || `Scanned Doc ${new Date().toLocaleDateString()}`
+        }));
+        
+        stopCamera();
+        setIsUploadModalOpen(true);
+      }
+    }
   };
 
   const filteredDocs = documents.filter(doc => {
@@ -97,7 +204,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
           </h2>
           <p className="text-sm text-slate-500">Securely store and manage hotel documents.</p>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-none">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
              <input 
@@ -108,11 +215,36 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                className="pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none w-full sm:w-64"
              />
           </div>
+          
+          {/* Scanner / Device Button */}
+          <button 
+            onClick={() => scannerInputRef.current?.click()}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
+            title="Import from connected scanner or device"
+          >
+            <Printer size={18} /> Scan from Device
+            <input 
+               type="file" 
+               ref={scannerInputRef} 
+               accept="image/*,application/pdf"
+               className="hidden" 
+               onChange={handleFileChange}
+             />
+          </button>
+
+          {/* Camera Button */}
+          <button 
+            onClick={startCamera}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
+          >
+            <Camera size={18} /> Use Camera
+          </button>
+          
           <button 
             onClick={() => setIsUploadModalOpen(true)}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
+            className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
           >
-            <Upload size={18} /> Import Document
+            <Upload size={18} /> Import
           </button>
         </div>
       </div>
@@ -152,7 +284,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                          <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500">
-                           <File size={20} />
+                           <FileIcon size={20} />
                          </div>
                          <div>
                             <p className="font-bold text-slate-800">{doc.title}</p>
@@ -202,12 +334,52 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
         )}
       </div>
 
-      {/* Upload Modal */}
+      {/* Scanning Modal */}
+      {isScanning && (
+        <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+           <div className="relative w-full max-w-2xl bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-700">
+              <video ref={videoRef} autoPlay playsInline className="w-full h-auto bg-black" style={{ maxHeight: '70vh' }} />
+              <canvas ref={canvasRef} className="hidden" />
+              
+              <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none">
+                 <div className="bg-black/50 backdrop-blur text-white px-3 py-1 rounded-full text-xs font-mono border border-white/10 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div> Live Camera
+                 </div>
+              </div>
+
+              {/* Scanning Grid Overlay */}
+              <div className="absolute inset-0 pointer-events-none opacity-30">
+                 <div className="absolute top-1/4 bottom-1/4 left-1/4 right-1/4 border-2 border-emerald-500 rounded-lg"></div>
+                 <div className="w-full h-full border-8 border-black/20"></div>
+              </div>
+              
+              <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 to-transparent flex justify-center gap-8 items-center">
+                 <button 
+                   onClick={stopCamera}
+                   className="p-3 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+                   title="Cancel Scan"
+                 >
+                   <X size={24} />
+                 </button>
+                 <button 
+                   onClick={captureImage}
+                   className="p-5 rounded-full bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/50 transition-transform active:scale-95 border-4 border-emerald-800"
+                   title="Capture Document"
+                 >
+                   <ScanLine size={32} />
+                 </button>
+              </div>
+           </div>
+           <p className="text-slate-400 mt-4 text-sm">Position document within frame and tap capture</p>
+        </div>
+      )}
+
+      {/* Upload/Scan Modal */}
       {isUploadModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
              <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-               <h3 className="text-lg font-bold text-slate-800">Import Document</h3>
+               <h3 className="text-lg font-bold text-slate-800">Add Document</h3>
                <button onClick={() => setIsUploadModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                  <X size={20} />
                </button>
@@ -215,30 +387,75 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
              
              <form onSubmit={handleSubmit} className="p-6 space-y-4">
                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Select File</label>
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${uploadForm.fileData ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-slate-50'}`}
-                  >
+                  <label className="block text-sm font-medium text-slate-700 mb-1">File Source</label>
+                  
+                  {/* File Drop / Action Area */}
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center transition-colors border-slate-300 hover:border-emerald-400 hover:bg-slate-50 relative group">
+                     {uploadForm.fileData ? (
+                        <div className="flex flex-col items-center">
+                           {uploadForm.fileType.startsWith('image/') ? (
+                             <img src={uploadForm.fileData} alt="Preview" className="h-32 object-contain rounded-lg mb-2 shadow-sm bg-white" />
+                           ) : (
+                             <CheckCircle2 className="mx-auto mb-2 text-emerald-600" size={32} />
+                           )}
+                           <p className="text-sm font-bold truncate max-w-full px-4 text-emerald-700">{uploadForm.fileName}</p>
+                           <button 
+                             type="button"
+                             onClick={() => setUploadForm(prev => ({ ...prev, fileData: '', fileName: '' }))}
+                             className="text-xs text-red-500 hover:text-red-700 mt-2 font-medium"
+                           >
+                             Remove & Replace
+                           </button>
+                        </div>
+                     ) : (
+                        <div className="space-y-4">
+                           <div className="flex justify-center gap-4">
+                              <button 
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="flex flex-col items-center gap-2 p-2 text-slate-500 hover:text-emerald-600 transition-colors"
+                              >
+                                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center group-hover:bg-emerald-50">
+                                  <Upload size={18} />
+                                </div>
+                                <span className="text-xs font-medium">Browse Files</span>
+                              </button>
+
+                              <button 
+                                type="button"
+                                onClick={handlePasteClick}
+                                className="flex flex-col items-center gap-2 p-2 text-slate-500 hover:text-emerald-600 transition-colors"
+                              >
+                                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center group-hover:bg-emerald-50">
+                                  <Clipboard size={18} />
+                                </div>
+                                <span className="text-xs font-medium">Paste Image</span>
+                              </button>
+
+                              <button 
+                                type="button"
+                                onClick={startCamera}
+                                className="flex flex-col items-center gap-2 p-2 text-slate-500 hover:text-emerald-600 transition-colors"
+                              >
+                                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center group-hover:bg-emerald-50">
+                                  <Camera size={18} />
+                                </div>
+                                <span className="text-xs font-medium">Camera</span>
+                              </button>
+                           </div>
+                           <p className="text-xs text-slate-400">
+                             Or drag & drop file here. Max 5MB.
+                           </p>
+                        </div>
+                     )}
+                     
+                     {/* Hidden Inputs */}
                      <input 
                        type="file" 
                        ref={fileInputRef} 
                        className="hidden" 
                        onChange={handleFileChange}
                      />
-                     {uploadForm.fileData ? (
-                        <div className="text-emerald-600">
-                           <CheckCircle2 className="mx-auto mb-2" size={24} />
-                           <p className="text-sm font-bold truncate">{uploadForm.fileName}</p>
-                           <p className="text-xs">Ready to upload</p>
-                        </div>
-                     ) : (
-                        <div className="text-slate-500">
-                           <Upload className="mx-auto mb-2" size={24} />
-                           <p className="text-sm font-medium">Click to browse</p>
-                           <p className="text-xs text-slate-400 mt-1">Max 5MB (PDF, Images, Text)</p>
-                        </div>
-                     )}
                   </div>
                </div>
 
@@ -250,7 +467,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                    value={uploadForm.title}
                    onChange={e => setUploadForm({...uploadForm, title: e.target.value})}
-                   placeholder="e.g. Invoice #1024"
+                   placeholder="e.g. Scanned Invoice #1024"
                  />
                </div>
 

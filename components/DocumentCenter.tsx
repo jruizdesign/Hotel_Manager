@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StoredDocument } from '../types';
-import { FileText, Upload, Trash2, Download, Search, Filter, File, X, CheckCircle2, Camera, ScanLine, Printer, Clipboard, ImagePlus } from 'lucide-react';
+import { FileText, Upload, Trash2, Download, Search, Filter, File as FileIcon, X, CheckCircle2, Camera, ScanLine, Printer, Clipboard, ImagePlus } from 'lucide-react';
 
 interface DocumentCenterProps {
   documents: StoredDocument[];
@@ -284,7 +284,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                          <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500">
-                           <File size={20} />
+                           <FileIcon size={20} />
                          </div>
                          <div>
                             <p className="font-bold text-slate-800">{doc.title}</p>

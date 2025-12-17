@@ -1,6 +1,7 @@
 import * as firebase from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, User, Auth } from "firebase/auth";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { AppSettings } from "../types";
 
 let dbInstance: Firestore | null = null;
@@ -28,6 +29,16 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
 
   try {
     appInstance = firebase.initializeApp(settings.firebaseConfig);
+
+    // Initialize App Check
+    // Using the site key provided in the integration request
+    if (typeof window !== 'undefined') {
+      initializeAppCheck(appInstance, {
+        provider: new ReCaptchaV3Provider('abcdefghijklmnopqrstuvwxy-1234567890abcd'),
+        isTokenAutoRefreshEnabled: true
+      });
+    }
+
     dbInstance = getFirestore(appInstance);
     authInstance = getAuth(appInstance);
     return dbInstance;

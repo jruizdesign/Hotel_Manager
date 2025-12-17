@@ -1,4 +1,4 @@
-import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest } from '../types';
+import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest, AttendanceLog, DNRRecord } from '../types';
 import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
 import { db } from './db';
 import { initializeFirebase, getFirebaseDB } from './firebase';
@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   // If cloud config is present, we disable demo mode by default to prevent overwriting cloud data
   // User will see Setup Wizard instead if DB is empty
   demoMode: !hasEnvConfig, 
+  maintenanceEmail: 'maintenance@staysync.hotel',
   firebaseConfig: {
     apiKey: process.env.FIREBASE_API_KEY || '',
     authDomain: process.env.FIREBASE_AUTH_DOMAIN || '',
@@ -187,6 +188,13 @@ export const StorageService = {
     return StorageService.saveData(db.staff, staff, 'staff');
   },
 
+  getAttendanceLogs: async (): Promise<AttendanceLog[]> => {
+    return StorageService.getOrSeedData(db.attendance, [], 'attendance');
+  },
+  saveAttendanceLogs: async (logs: AttendanceLog[]) => {
+    return StorageService.saveData(db.attendance, logs, 'attendance');
+  },
+
   getTransactions: async (): Promise<Transaction[]> => {
     return StorageService.getOrSeedData(db.transactions, MOCK_TRANSACTIONS, 'transactions');
   },
@@ -209,6 +217,13 @@ export const StorageService = {
     return StorageService.saveData(db.features, features, 'features');
   },
 
+  getDNRRecords: async (): Promise<DNRRecord[]> => {
+    return StorageService.getOrSeedData(db.dnr, [], 'dnr');
+  },
+  saveDNRRecords: async (records: DNRRecord[]) => {
+    return StorageService.saveData(db.dnr, records, 'dnr');
+  },
+
   // --- Utility Methods ---
 
   clearAllData: async () => {
@@ -217,10 +232,12 @@ export const StorageService = {
       db.guests.clear(),
       db.maintenance.clear(),
       db.staff.clear(),
+      db.attendance.clear(),
       db.transactions.clear(),
       db.history.clear(),
       db.documents.clear(),
-      db.features.clear()
+      db.features.clear(),
+      db.dnr.clear()
     ]);
   },
 
@@ -229,29 +246,33 @@ export const StorageService = {
   },
 
   exportAllData: async () => {
-    const [rooms, guests, maintenance, staff, transactions, history, documents, features] = await Promise.all([
+    const [rooms, guests, maintenance, staff, attendance, transactions, history, documents, features, dnr] = await Promise.all([
       db.rooms.toArray(),
       db.guests.toArray(),
       db.maintenance.toArray(),
       db.staff.toArray(),
+      db.attendance.toArray(),
       db.transactions.toArray(),
       db.history.toArray(),
       db.documents.toArray(),
-      db.features.toArray()
+      db.features.toArray(),
+      db.dnr.toArray()
     ]);
 
     return {
-      version: '3.5',
+      version: '4.0',
       timestamp: new Date().toISOString(),
       data: {
         staysync_rooms: rooms,
         staysync_guests: guests,
         staysync_maintenance: maintenance,
         staysync_staff: staff,
+        staysync_attendance: attendance,
         staysync_transactions: transactions,
         staysync_history: history,
         staysync_documents: documents,
-        staysync_features: features
+        staysync_features: features,
+        staysync_dnr: dnr
       }
     };
   },
@@ -263,7 +284,7 @@ export const StorageService = {
     
     const data = backupData.data;
     
-    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.transactions, db.history, db.documents, db.features, async () => {
+    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.attendance, db.transactions, db.history, db.documents, db.features, db.dnr, async () => {
       await db.rooms.clear();
       if (data.staysync_rooms) await db.rooms.bulkAdd(data.staysync_rooms);
       
@@ -275,6 +296,9 @@ export const StorageService = {
       
       await db.staff.clear();
       if (data.staysync_staff) await db.staff.bulkAdd(data.staysync_staff);
+
+      await db.attendance.clear();
+      if (data.staysync_attendance) await db.attendance.bulkAdd(data.staysync_attendance);
       
       await db.transactions.clear();
       if (data.staysync_transactions) await db.transactions.bulkAdd(data.staysync_transactions);
@@ -287,6 +311,9 @@ export const StorageService = {
       
       await db.features.clear();
       if (data.staysync_features) await db.features.bulkAdd(data.staysync_features);
+
+      await db.dnr.clear();
+      if (data.staysync_dnr) await db.dnr.bulkAdd(data.staysync_dnr);
     });
   },
 

@@ -69,6 +69,16 @@ export interface Staff {
   pin: string; // Security PIN for login
 }
 
+export type AttendanceAction = 'CLOCK_IN' | 'CLOCK_OUT' | 'START_BREAK' | 'END_BREAK';
+
+export interface AttendanceLog {
+  id: string;
+  staffId: string;
+  staffName: string; // Denormalized for easier display
+  action: AttendanceAction;
+  timestamp: string; // ISO String
+}
+
 export interface Transaction {
   id: string;
   date: string;
@@ -100,11 +110,21 @@ export interface FeatureRequest {
   submittedDate: string;
 }
 
-export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings';
+export interface DNRRecord {
+  id: string;
+  name: string;
+  reason: string;
+  notes: string;
+  photo?: string; // Base64 encoded string
+  dateAdded: string;
+}
+
+export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings' | 'reports';
 
 export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 
 export interface CurrentUser {
+  id?: string; // Added to track specific staff ID
   name: string;
   role: UserRole;
   avatarInitials: string;
@@ -124,6 +144,7 @@ export interface FirebaseConfig {
 export interface AppSettings {
   dataSource: DataSource;
   demoMode: boolean;
+  maintenanceEmail?: string;
   firebaseConfig?: FirebaseConfig;
   // Legacy
   apiBaseUrl?: string;

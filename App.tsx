@@ -12,25 +12,35 @@ import SetupWizard from './components/SetupWizard';
 import MaintenancePanel from './components/MaintenancePanel';
 import DocumentCenter from './components/DocumentCenter';
 import FeatureRequestPanel from './components/FeatureRequestPanel';
-import { ViewState, RoomStatus, Room, CurrentUser, UserRole, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest } from './types';
+import TerminalAuth from './components/TerminalAuth';
+import DailyReport from './components/DailyReport'; 
+import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest, AttendanceLog, AttendanceAction, DNRRecord } from './types';
 import { StorageService } from './services/storage';
-import { Wrench, Loader2, CheckCircle, Mail, AlertTriangle } from 'lucide-react';
+import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
+import { Wrench, Loader2, Mail, AlertTriangle } from 'lucide-react';
 import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
 
 const App: React.FC = () => {
+  // Authentication State
+  const [terminalUser, setTerminalUser] = useState<any | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Application State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [currentView, setView] = useState<ViewState>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
   
-  // App State
+  // Data State
   const [rooms, setRooms] = useState<Room[]>([]);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceTicket[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [history, setHistory] = useState<BookingHistory[]>([]);
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
   const [featureRequests, setFeatureRequests] = useState<FeatureRequest[]>([]);
+  const [dnrRecords, setDnrRecords] = useState<DNRRecord[]>([]); // New State
 
   // Toast Notification State
   const [toast, setToast] = useState<{ message: string; subtext?: string; type?: 'success' | 'error' } | null>(null);
@@ -38,9 +48,26 @@ const App: React.FC = () => {
   // Navigation State for External Triggers
   const [bookingRequest, setBookingRequest] = useState<{ isOpen: boolean, roomNumber?: string }>({ isOpen: false });
 
-  // --- Initial Data Load ---
+  // --- Initialization & Auth Logic ---
   useEffect(() => {
-    loadData();
+    const initApp = async () => {
+      // 1. Initialize Firebase via StorageService (reads .env or DB)
+      await StorageService.getSettings();
+      
+      // 2. Subscribe to Firebase Auth State
+      const unsubscribe = subscribeToAuthChanges((user) => {
+        setTerminalUser(user);
+        setAuthLoading(false);
+        if (user) {
+          // If authorized, load app data
+          loadData();
+        }
+      });
+      
+      return () => unsubscribe();
+    };
+
+    initApp();
   }, []);
 
   // Toast Timer
@@ -54,34 +81,37 @@ const App: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedTrans, fetchedHistory, fetchedDocs, fetchedFeatures] = await Promise.all([
+      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedAttendance, fetchedTrans, fetchedHistory, fetchedDocs, fetchedFeatures, fetchedDNR] = await Promise.all([
         StorageService.getRooms(),
         StorageService.getGuests(),
         StorageService.getMaintenance(),
         StorageService.getStaff(),
+        StorageService.getAttendanceLogs(),
         StorageService.getTransactions(),
         StorageService.getHistory(),
         StorageService.getDocuments(),
-        StorageService.getFeatureRequests()
+        StorageService.getFeatureRequests(),
+        StorageService.getDNRRecords()
       ]);
 
       setRooms(fetchedRooms);
       setGuests(fetchedGuests);
       setMaintenance(fetchedMaint);
       setStaff(fetchedStaff);
+      setAttendanceLogs(fetchedAttendance);
       setTransactions(fetchedTrans);
       setHistory(fetchedHistory);
       setDocuments(fetchedDocs);
       setFeatureRequests(fetchedFeatures);
+      setDnrRecords(fetchedDNR);
     } catch (error) {
       console.error("Failed to load application data", error);
-      alert("Error loading data. If using Remote Mode, check your connection settings.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- Auth & Permission Handlers ---
+  // --- Auth Handlers ---
 
   const handleLogin = (user: CurrentUser) => {
     setCurrentUser(user);
@@ -93,12 +123,20 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    // Only logs out of the local "Staff" session, keeps Firebase connected
     setCurrentUser(null);
     setView('dashboard');
   };
 
+  const handleLock = async () => {
+    // Completely signs out of Firebase and resets state
+    await logoutTerminal();
+    setCurrentUser(null);
+    setTerminalUser(null);
+    setView('dashboard');
+  };
+
   const handleDataReset = async () => {
-    // Reload all state from storage after a reset
     await loadData();
     setView('dashboard');
   };
@@ -107,7 +145,7 @@ const App: React.FC = () => {
     const newAdmin: Staff = {
       id: Date.now().toString(),
       name,
-      role: 'Superuser', // Default the first user to Superuser
+      role: 'Superuser', 
       status: 'On Duty',
       shift: 'Any',
       pin
@@ -118,6 +156,7 @@ const App: React.FC = () => {
     
     // Auto login
     handleLogin({
+      id: newAdmin.id,
       name: newAdmin.name,
       role: 'Superuser',
       avatarInitials: newAdmin.name.substring(0, 2).toUpperCase()
@@ -160,7 +199,6 @@ const App: React.FC = () => {
     await StorageService.saveRooms(updatedRooms);
   };
 
-  // Setup Wizard Completion
   const handleSetupComplete = async (newRooms: Omit<Room, 'id' | 'status'>[]) => {
     const createdRooms: Room[] = newRooms.map((r, idx) => ({
       ...r,
@@ -171,7 +209,6 @@ const App: React.FC = () => {
     await StorageService.saveRooms(createdRooms);
   };
 
-  // Triggered from RoomList
   const handleBookRoom = (roomNumber: string) => {
     setView('guests');
     setBookingRequest({ isOpen: true, roomNumber });
@@ -184,7 +221,6 @@ const App: React.FC = () => {
     if (!window.confirm(`Confirm Check Out for Room ${room.number}? This will mark the room as Dirty.`)) return;
 
     try {
-      // 1. Update Guest Status
       const todayStr = new Date().toISOString().split('T')[0];
       const updatedGuests = guests.map(g => {
         if (g.id === room.guestId) {
@@ -193,12 +229,10 @@ const App: React.FC = () => {
         return g;
       });
 
-      // 2. Update Room Status
       const updatedRooms = rooms.map(r => 
         r.id === roomId ? { ...r, status: RoomStatus.DIRTY, guestId: undefined } : r
       );
 
-      // 3. Save State
       setGuests(updatedGuests);
       setRooms(updatedRooms);
 
@@ -214,7 +248,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Maintenance Handlers
   const handleAddTicket = async (ticketData: Omit<MaintenanceTicket, 'id' | 'status' | 'date'>) => {
     try {
       const newTicket: MaintenanceTicket = {
@@ -224,12 +257,10 @@ const App: React.FC = () => {
         date: new Date().toISOString().split('T')[0]
       };
       
-      // Update UI first
       const updatedMaintenance = [newTicket, ...maintenance];
       setMaintenance(updatedMaintenance);
       await StorageService.saveMaintenance(updatedMaintenance);
 
-      // Trigger Email Notification with response handling
       sendMaintenanceRequestEmail(newTicket)
         .then(() => {
           setToast({
@@ -239,7 +270,6 @@ const App: React.FC = () => {
         })
         .catch((err) => {
           console.error("Email notification failed", err);
-          // Ensure we call 'sendResponse' equivalent (UI feedback) even on failure
           setToast({
             message: 'Ticket Created',
             subtext: 'Warning: Email notification failed to send.',
@@ -258,7 +288,6 @@ const App: React.FC = () => {
        const today = new Date().toISOString().split('T')[0];
        const ticket = maintenance.find(t => t.id === ticketId);
        
-       // 1. Update Ticket
        const updatedMaintenance = maintenance.map(t => 
          t.id === ticketId 
            ? { ...t, status: 'Resolved' as const, cost, completedDate: today } 
@@ -266,7 +295,6 @@ const App: React.FC = () => {
        );
        setMaintenance(updatedMaintenance);
 
-       // 2. Create Transaction for Accounting
        let updatedTransactions = transactions;
        if (cost > 0) {
          const newTx: Transaction = {
@@ -286,7 +314,6 @@ const App: React.FC = () => {
          StorageService.saveTransactions(updatedTransactions)
        ]);
 
-       // Trigger Email Notification with response handling
        if (ticket) {
           sendMaintenanceResolvedEmail(ticket, cost, note)
             .then(() => {
@@ -297,7 +324,6 @@ const App: React.FC = () => {
             })
             .catch((err) => {
               console.error("Email notification failed", err);
-              // Ensure feedback is provided regardless of success/fail
               setToast({
                 message: 'Ticket Resolved',
                 subtext: 'Warning: Resolution email failed to send.',
@@ -311,9 +337,6 @@ const App: React.FC = () => {
      }
   };
 
-  // NOTE: This function needs to return boolean for success/fail UI feedback, 
-  // but it calls async functions. For simplicity in UI, we update state optimistically 
-  // and trigger the save in background.
   const handleAddGuest = (newGuestData: Omit<Guest, 'id'>): boolean => {
     if (currentUser?.role === 'Contractor') return false; 
 
@@ -329,7 +352,6 @@ const App: React.FC = () => {
       balance: 0
     };
     
-    // Optimistic Update
     const updatedGuests = [...guests, newGuest];
     setGuests(updatedGuests);
     
@@ -351,7 +373,6 @@ const App: React.FC = () => {
       StorageService.saveRooms(updatedRooms)
         .catch(err => {
           console.error("Failed to update room", err);
-          // Note: In a real app we might want to revert state here
         });
     }
 
@@ -363,19 +384,15 @@ const App: React.FC = () => {
       const oldGuest = guests.find(g => g.id === updatedGuest.id);
       if (!oldGuest) return;
 
-      // 1. Handle Room Swap if room number changed
       let currentRooms = [...rooms];
       if (oldGuest.roomNumber !== updatedGuest.roomNumber) {
-        // Free old room
         const oldRoomIdx = currentRooms.findIndex(r => r.number === oldGuest.roomNumber);
         if (oldRoomIdx > -1) {
           currentRooms[oldRoomIdx] = { ...currentRooms[oldRoomIdx], status: RoomStatus.DIRTY, guestId: undefined };
         }
         
-        // Occupy new room
         const newRoomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
         if (newRoomIdx > -1) {
-          // Only occupy if we are checking in or already checked in
           if (updatedGuest.status === 'Checked In') {
              currentRooms[newRoomIdx] = { ...currentRooms[newRoomIdx], status: RoomStatus.OCCUPIED, guestId: updatedGuest.id };
           }
@@ -383,7 +400,6 @@ const App: React.FC = () => {
           alert(`Warning: Room ${updatedGuest.roomNumber} does not exist. Guest updated but room status not linked.`);
         }
       } else {
-        // Room didn't change, but check if status changed (e.g. Reserved -> Checked In)
         const roomIdx = currentRooms.findIndex(r => r.number === updatedGuest.roomNumber);
         if (roomIdx > -1) {
            if (oldGuest.status === 'Reserved' && updatedGuest.status === 'Checked In') {
@@ -392,10 +408,8 @@ const App: React.FC = () => {
         }
       }
 
-      // 2. Update Guest List
       const updatedGuests = guests.map(g => g.id === updatedGuest.id ? updatedGuest : g);
       
-      // 3. Save State
       setGuests(updatedGuests);
       setRooms(currentRooms);
       
@@ -432,7 +446,6 @@ const App: React.FC = () => {
       });
       setGuests(updatedGuests);
 
-      // Save both
       await Promise.all([
         StorageService.saveTransactions(updatedTransactions),
         StorageService.saveGuests(updatedGuests)
@@ -444,7 +457,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Staff Handlers
   const handleAddStaff = async (newStaffData: Omit<Staff, 'id'>) => {
     const newMember: Staff = { ...newStaffData, id: Date.now().toString() };
     const updatedStaff = [...staff, newMember];
@@ -464,10 +476,55 @@ const App: React.FC = () => {
     await StorageService.saveStaff(updatedStaff);
   };
 
-  // Document Handlers
+  const handleAttendanceAction = async (staffId: string, action: AttendanceAction) => {
+     try {
+        const staffMember = staff.find(s => s.id === staffId);
+        if (!staffMember) return;
+
+        // 1. Determine new Status based on Action
+        let newStatus: Staff['status'] = staffMember.status;
+        if (action === 'CLOCK_IN') newStatus = 'On Duty';
+        else if (action === 'CLOCK_OUT') newStatus = 'Off Duty';
+        else if (action === 'START_BREAK') newStatus = 'Break';
+        else if (action === 'END_BREAK') newStatus = 'On Duty';
+
+        // 2. Create Log Entry
+        const newLog: AttendanceLog = {
+           id: `log-${Date.now()}`,
+           staffId,
+           staffName: staffMember.name,
+           action,
+           timestamp: new Date().toISOString()
+        };
+
+        // 3. Update State & DB
+        const updatedStaff = staff.map(s => s.id === staffId ? { ...s, status: newStatus } : s);
+        const updatedLogs = [newLog, ...attendanceLogs];
+
+        setStaff(updatedStaff);
+        setAttendanceLogs(updatedLogs);
+
+        await Promise.all([
+           StorageService.saveStaff(updatedStaff),
+           StorageService.saveAttendanceLogs(updatedLogs)
+        ]);
+
+        let msg = "";
+        if (action === 'CLOCK_IN') msg = "Welcome! You are now On Duty.";
+        if (action === 'CLOCK_OUT') msg = "Goodbye! You are now Off Duty.";
+        if (action === 'START_BREAK') msg = "Break started. Enjoy your rest.";
+        if (action === 'END_BREAK') msg = "Welcome back from break.";
+        
+        setToast({ message: 'Status Updated', subtext: msg });
+
+     } catch (err) {
+        console.error("Attendance log failed", err);
+        setToast({ message: 'Error', subtext: 'Failed to log attendance.', type: 'error' });
+     }
+  };
+
   const handleAddDocument = async (newDocData: Omit<StoredDocument, 'id' | 'date' | 'size'>) => {
      try {
-       // Calculate approximate size from base64 length
        const sizeInBytes = Math.ceil((newDocData.fileData.length * 3) / 4);
        
        const newDoc: StoredDocument = {
@@ -494,7 +551,6 @@ const App: React.FC = () => {
     await StorageService.saveDocuments(updatedDocs);
   };
 
-  // Feature Request Handlers
   const handleAddFeatureRequest = async (reqData: Omit<FeatureRequest, 'id' | 'status' | 'submittedDate'>) => {
     try {
       const newReq: FeatureRequest = {
@@ -533,9 +589,61 @@ const App: React.FC = () => {
       console.error("Failed to delete feature request", error);
     }
   };
+  
+  // --- New Handlers for DNR ---
+  
+  const handleAddDNR = async (record: Omit<DNRRecord, 'id' | 'dateAdded'>) => {
+    try {
+      const newRecord: DNRRecord = {
+        ...record,
+        id: `dnr-${Date.now()}`,
+        dateAdded: new Date().toISOString()
+      };
+      const updatedDNR = [newRecord, ...dnrRecords];
+      setDnrRecords(updatedDNR);
+      await StorageService.saveDNRRecords(updatedDNR);
+      setToast({ message: 'Added to Do Not Rent List', subtext: newRecord.name });
+    } catch (error) {
+      console.error("Failed to add DNR record", error);
+      setToast({ message: 'Error', subtext: 'Failed to save record.', type: 'error' });
+    }
+  };
+
+  const handleDeleteDNR = async (id: string) => {
+    if (currentUser?.role !== 'Manager' && currentUser?.role !== 'Superuser') {
+      alert("Only Managers can remove names from this list.");
+      return;
+    }
+    
+    if (window.confirm("Remove this person from the Do Not Rent list?")) {
+      try {
+        const updatedDNR = dnrRecords.filter(r => r.id !== id);
+        setDnrRecords(updatedDNR);
+        await StorageService.saveDNRRecords(updatedDNR);
+        setToast({ message: 'Record Removed', subtext: 'Person removed from blocklist.' });
+      } catch (error) {
+        console.error("Failed to delete DNR record", error);
+      }
+    }
+  };
 
   // --- Render Logic ---
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-emerald-500">
+        <Loader2 className="w-12 h-12 animate-spin mb-4" />
+        <p className="text-slate-400">Connecting to Cloud Services...</p>
+      </div>
+    );
+  }
+
+  // If not logged into Firebase, show the Terminal Auth Screen
+  if (!terminalUser) {
+    return <TerminalAuth />;
+  }
+
+  // If logged into Firebase but app data loading
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-400">
@@ -545,11 +653,12 @@ const App: React.FC = () => {
     );
   }
 
+  // If app data loaded but no staff logged in (PIN screen)
   if (!currentUser) {
     return <LoginScreen staff={staff} onLogin={handleLogin} onCreateAdmin={handleCreateAdmin} />;
   }
 
-  // Construct context for AI
+  // Main Application
   const aiContext = {
     currentUserRole: currentUser.role,
     currentView,
@@ -567,6 +676,9 @@ const App: React.FC = () => {
       case 'dashboard':
         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
         return <Dashboard rooms={rooms} guests={guests} maintenance={maintenance} transactions={transactions} />;
+      case 'reports':
+        if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
+        return <DailyReport guests={guests} rooms={rooms} transactions={transactions} />;
       case 'rooms':
         if (currentUser.role === 'Contractor') return <div className="p-4 text-slate-500">Access Denied</div>;
         return (
@@ -589,12 +701,16 @@ const App: React.FC = () => {
         return (
           <GuestList 
             guests={guests}
-            rooms={rooms} // Pass rooms to calculate rates
-            transactions={transactions} // Pass transactions to show billing history
+            rooms={rooms} 
+            transactions={transactions} 
             history={history}
+            dnrRecords={dnrRecords} // Pass DNR records
             onAddGuest={handleAddGuest}
             onUpdateGuest={handleUpdateGuest}
-            onAddPayment={handleAddPayment} // Pass payment handler
+            onAddPayment={handleAddPayment} 
+            onCheckOut={handleCheckOut} // Pass check-out handler
+            onAddDNR={handleAddDNR} // Pass handler
+            onDeleteDNR={handleDeleteDNR} // Pass handler
             userRole={currentUser.role}
             externalBookingRequest={bookingRequest}
             onClearExternalRequest={() => setBookingRequest({ isOpen: false })}
@@ -637,9 +753,13 @@ const App: React.FC = () => {
         return (
           <StaffList 
             staff={staff}
+            attendanceLogs={attendanceLogs}
+            currentUserId={currentUser.id}
+            userRole={currentUser.role}
             onAddStaff={handleAddStaff}
             onDeleteStaff={handleDeleteStaff}
             onUpdateStatus={handleUpdateStaffStatus}
+            onAttendanceAction={handleAttendanceAction}
           />
         );
       case 'settings':
@@ -657,12 +777,13 @@ const App: React.FC = () => {
         setView={setView} 
         userRole={currentUser.role}
         onLogout={handleLogout}
+        onLock={handleLock}
       />
       
       <main className="flex-1 ml-64 p-8 overflow-y-auto">
         <header className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 capitalize">{currentView === 'features' ? 'Requests' : currentView}</h1>
+            <h1 className="text-2xl font-bold text-slate-800 capitalize">{currentView === 'features' ? 'Requests' : currentView.replace('-', ' ')}</h1>
             <p className="text-slate-500 text-sm">Welcome back, {currentUser.name}.</p>
           </div>
           <div className="flex items-center gap-4">
@@ -685,12 +806,10 @@ const App: React.FC = () => {
 
       <GeminiAssistant contextData={aiContext} />
 
-      {/* Setup Wizard Overlay - Only shows if rooms are empty (meaning not in demo and not setup) */}
       {!isLoading && rooms.length === 0 && (currentUser.role === 'Manager' || currentUser.role === 'Superuser') && (
         <SetupWizard onComplete={handleSetupComplete} />
       )}
 
-      {/* Global Toast Notification */}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-5 duration-300">
           <div className={`text-white pl-4 pr-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 border ${toast.type === 'error' ? 'bg-red-900 border-red-700' : 'bg-slate-900 border-slate-700'}`}>

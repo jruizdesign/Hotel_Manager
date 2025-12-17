@@ -44,7 +44,7 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
     // Using the site key provided in the integration request
     if (typeof window !== 'undefined') {
       initializeAppCheck(appInstance, {
-        provider: new ReCaptchaV3Provider('abcdefghijklmnopqrstuvwxy-1234567890abcd'),
+        provider: new ReCaptchaV3Provider('6LclNC4sAAAAAMP6yKj9sfM-rPppjb7XXxkavdQE'),
         isTokenAutoRefreshEnabled: true
       });
     }

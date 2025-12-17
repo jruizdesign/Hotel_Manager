@@ -63,6 +63,7 @@ export interface MaintenanceTicket {
 export interface Staff {
   id: string;
   name: string;
+  email?: string; // Added for Firebase Auth integration
   role: 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
   status: 'On Duty' | 'Off Duty' | 'Break';
   shift: string;

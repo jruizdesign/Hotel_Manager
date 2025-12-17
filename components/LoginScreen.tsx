@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CurrentUser, Staff, UserRole } from '../types';
-import { Shield, Lock, ChevronRight, User, AlertCircle, Key, Unlock, ShieldCheck, LogOut } from 'lucide-react';
-import { logoutTerminal } from '../services/firebase';
+import { Shield, Lock, ChevronRight, User, AlertCircle, Key, Unlock, ShieldCheck, LogOut, Mail, AtSign, Loader2, ArrowLeft } from 'lucide-react';
+import { loginTerminal, logoutTerminal } from '../services/firebase';
 
 interface LoginScreenProps {
   staff: Staff[];
@@ -10,16 +10,18 @@ interface LoginScreenProps {
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin }) => {
+  const [authMethod, setAuthMethod] = useState<'pin' | 'email'>('pin');
   const [selectedUser, setSelectedUser] = useState<Staff | null>(null);
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState<string | null>(null);
   
-  // Empty State Form
-  const [newAdminName, setNewAdminName] = useState('');
-  const [newAdminPin, setNewAdminPin] = useState('');
-
-  // Recovery State
-  const [showRecovery, setShowRecovery] = useState(false);
+  // PIN State
+  const [pin, setPin] = useState('');
+  
+  // Email State
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Group staff by role for better UX
   const superusers = staff.filter(s => s.role === 'Superuser');
@@ -32,32 +34,79 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
     setError(null);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const attemptLogin = (user: Staff) => {
+    // Map Staff Role to App Permission Role
+    let appRole: UserRole = 'Staff';
+    if (user.role === 'Superuser') appRole = 'Superuser';
+    else if (user.role === 'Manager') appRole = 'Manager';
+    else if (user.role === 'Maintenance') appRole = 'Contractor';
+
+    // Create initials
+    const names = user.name.split(' ');
+    const initials = names.length >= 2 
+      ? `${names[0][0]}${names[1][0]}`.toUpperCase() 
+      : user.name.substring(0, 2).toUpperCase();
+
+    onLogin({
+      id: user.id, // Pass the Staff ID to track attendance
+      name: user.name,
+      role: appRole,
+      avatarInitials: initials
+    });
+  };
+
+  const handlePinLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
 
     if (pin === selectedUser.pin) {
-      // Map Staff Role to App Permission Role
-      let appRole: UserRole = 'Staff';
-      if (selectedUser.role === 'Superuser') appRole = 'Superuser';
-      else if (selectedUser.role === 'Manager') appRole = 'Manager';
-      else if (selectedUser.role === 'Maintenance') appRole = 'Contractor';
-
-      // Create initials
-      const names = selectedUser.name.split(' ');
-      const initials = names.length >= 2 
-        ? `${names[0][0]}${names[1][0]}`.toUpperCase() 
-        : selectedUser.name.substring(0, 2).toUpperCase();
-
-      onLogin({
-        id: selectedUser.id, // Pass the Staff ID to track attendance
-        name: selectedUser.name,
-        role: appRole,
-        avatarInitials: initials
-      });
+      attemptLogin(selectedUser);
     } else {
       setError('Incorrect PIN. Please try again.');
       setPin('');
+    }
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      // 1. Authenticate against Firebase
+      const result = await loginTerminal(email, password);
+      const authenticatedEmail = result.user.email;
+
+      if (!authenticatedEmail) {
+        throw new Error("Authentication failed: No email returned.");
+      }
+
+      // 2. Find matching staff member
+      const matchedStaff = staff.find(s => s.email?.toLowerCase() === authenticatedEmail.toLowerCase());
+
+      if (matchedStaff) {
+        attemptLogin(matchedStaff);
+      } else {
+        // Fallback: If user authenticates via Firebase (e.g. Owner) but isn't in staff list yet.
+        // We grant Superuser access temporarily based on the firebase auth success.
+        onLogin({
+            id: 'admin-override',
+            name: result.user.displayName || authenticatedEmail.split('@')[0],
+            role: 'Superuser',
+            avatarInitials: 'AD'
+        });
+      }
+    } catch (err: any) {
+      console.error("Login failed", err);
+      if (err.code === 'auth/invalid-credential') {
+        setError("Invalid email or password.");
+      } else if (err.message?.includes("Cloud connection")) {
+        setError("Cloud services offline. Use PIN.");
+      } else {
+        setError("Authentication failed.");
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -73,6 +122,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
         await logoutTerminal();
     }
   };
+
+  // Empty State Form (Local Vars)
+  const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminPin, setNewAdminPin] = useState('');
+
+  // Recovery State
+  const [showRecovery, setShowRecovery] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -140,9 +196,70 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
         ) : (
           /* Scenario 2: Staff Exists */
           <>
-            {!selectedUser ? (
+            {authMethod === 'email' ? (
+               // EMAIL LOGIN VIEW
+               <form onSubmit={handleEmailLogin} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="text-center">
+                    <button 
+                      type="button"
+                      onClick={() => { setAuthMethod('pin'); setError(null); }}
+                      className="text-slate-400 text-sm hover:text-white mb-4 flex items-center justify-center gap-1 mx-auto"
+                    >
+                      <ArrowLeft size={14} /> Back to User List
+                    </button>
+                    <h2 className="text-xl font-bold text-white flex items-center justify-center gap-2">
+                       <Mail size={20} className="text-emerald-400" /> Admin Login
+                    </h2>
+                    <p className="text-slate-400 text-sm mt-1">Authenticate via Cloud Account</p>
+                  </div>
+
+                  <div className="space-y-4">
+                     <div>
+                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email</label>
+                       <div className="relative">
+                          <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                          <input 
+                            type="email" required autoFocus
+                            className="w-full bg-slate-800/50 border border-slate-600 focus:border-emerald-500 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-500 outline-none transition-all"
+                            placeholder="admin@hotel.com"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                          />
+                       </div>
+                     </div>
+                     
+                     <div>
+                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Password</label>
+                       <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                          <input 
+                            type="password" required
+                            className="w-full bg-slate-800/50 border border-slate-600 focus:border-emerald-500 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-500 outline-none transition-all"
+                            placeholder="••••••••"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                          />
+                       </div>
+                     </div>
+
+                     {error && (
+                        <div className="flex items-center justify-center gap-2 text-red-400 text-sm bg-red-900/20 p-2 rounded-lg border border-red-900/30">
+                          <AlertCircle size={14} /> {error}
+                        </div>
+                     )}
+
+                     <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
+                      >
+                        {isLoading ? <Loader2 className="animate-spin" size={18} /> : "Sign In"}
+                      </button>
+                  </div>
+               </form>
+            ) : !selectedUser ? (
               // View 2.A: Select User
-              <div className="space-y-6">
+              <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
                 <div className="flex justify-between items-center mb-4">
                    <h2 className="text-xl font-semibold text-white text-center flex-1 ml-6">Select Your Profile</h2>
                    <button 
@@ -238,13 +355,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
                   )}
                 </div>
                 
-                {/* Emergency Recovery Button */}
-                <div className="pt-4 border-t border-slate-700/50 text-center">
+                {/* Switch to Email Login */}
+                <div className="pt-4 border-t border-slate-700/50 text-center space-y-3">
+                   <button 
+                     onClick={() => { setAuthMethod('email'); setError(null); }}
+                     className="w-full text-sm text-slate-400 hover:text-white hover:bg-slate-800 py-2 rounded transition-colors flex items-center justify-center gap-2"
+                   >
+                     <Mail size={16} /> Admin Login (Email & Password)
+                   </button>
+
                    <button 
                      onClick={() => setShowRecovery(!showRecovery)}
                      className="text-xs text-slate-500 hover:text-slate-300 flex items-center justify-center gap-1 mx-auto transition-colors"
                    >
-                     <Key size={12} /> Lost Access?
+                     <Key size={12} /> View PINs (Local Mode)
                    </button>
 
                    {showRecovery && (
@@ -259,7 +383,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
                          {staff.map(s => (
                            <div key={s.id} className="flex justify-between text-xs py-1 border-b border-slate-700 last:border-0">
                              <span className="text-slate-300">{s.name} <span className="text-[10px] opacity-50">({s.role})</span></span>
-                             <span className="font-mono text-emerald-400">{s.pin}</span>
+                             <div className="flex flex-col items-end">
+                               <span className="font-mono text-emerald-400">{s.pin}</span>
+                               {s.email && <span className="text-[9px] text-slate-500">{s.email}</span>}
+                             </div>
                            </div>
                          ))}
                        </div>
@@ -269,7 +396,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
               </div>
             ) : (
               // View 2.B: Enter PIN
-              <form onSubmit={handleLogin} className="space-y-6">
+              <form onSubmit={handlePinLogin} className="space-y-6">
                 <div className="text-center">
                   <button 
                     type="button"

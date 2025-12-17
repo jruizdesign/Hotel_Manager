@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Guest, UserRole, BookingHistory, Room, Transaction, RoomStatus, DNRRecord } from '../types';
-import { Users, Plus, X, Search, Calendar, Star, AlertCircle, History, Clock, UserCheck, UserPlus, Receipt, DollarSign, CheckCircle2, Pencil, Ban, Trash2, Camera, Upload } from 'lucide-react';
+import { Users, Plus, X, Search, Calendar, Star, AlertCircle, History, Clock, UserCheck, UserPlus, Receipt, DollarSign, CheckCircle2, Pencil, Ban, Trash2, Camera, Upload, LogOut } from 'lucide-react';
 
 interface GuestListProps {
   guests: Guest[];
@@ -11,6 +11,7 @@ interface GuestListProps {
   onAddGuest: (guest: Omit<Guest, 'id'>) => boolean;
   onUpdateGuest: (guest: Guest) => void;
   onAddPayment: (guestId: string, amount: number, date: string, note: string) => void;
+  onCheckOut: (roomId: string) => void;
   onAddDNR?: (record: Omit<DNRRecord, 'id' | 'dateAdded'>) => void;
   onDeleteDNR?: (id: string) => void;
   userRole: UserRole;
@@ -30,6 +31,7 @@ const GuestList: React.FC<GuestListProps> = ({
   onAddGuest, 
   onUpdateGuest,
   onAddPayment,
+  onCheckOut,
   onAddDNR,
   onDeleteDNR,
   userRole, 
@@ -336,6 +338,7 @@ const GuestList: React.FC<GuestListProps> = ({
                     const estCharges = calculateAccruedCharges(g);
                     const paid = calculateTotalPaid(g.id);
                     const currentBalance = estCharges - paid;
+                    const room = rooms.find(r => r.number === g.roomNumber);
                     
                     return (
                       <tr key={g.id} className="hover:bg-slate-50 transition-colors">
@@ -387,6 +390,15 @@ const GuestList: React.FC<GuestListProps> = ({
                                 >
                                   <DollarSign size={14} /> Bill
                                 </button>
+                                {g.status === 'Checked In' && room && (
+                                  <button
+                                    onClick={() => onCheckOut(room.id)}
+                                    className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                    title="Check Out"
+                                  >
+                                    <LogOut size={18} />
+                                  </button>
+                                )}
                             </>
                           )}
                           <button 

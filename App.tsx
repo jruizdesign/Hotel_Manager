@@ -708,6 +708,7 @@ const App: React.FC = () => {
             onAddGuest={handleAddGuest}
             onUpdateGuest={handleUpdateGuest}
             onAddPayment={handleAddPayment} 
+            onCheckOut={handleCheckOut} // Pass check-out handler
             onAddDNR={handleAddDNR} // Pass handler
             onDeleteDNR={handleDeleteDNR} // Pass handler
             userRole={currentUser.role}

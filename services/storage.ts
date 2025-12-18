@@ -12,8 +12,7 @@ const hasEnvConfig = !!process.env.FIREBASE_API_KEY;
 
 const DEFAULT_SETTINGS: AppSettings = {
   dataSource: hasEnvConfig ? 'Cloud' : 'Local',
-  // If cloud config is present, we disable demo mode by default to prevent overwriting cloud data
-  // User will see Setup Wizard instead if DB is empty
+  // If cloud config is present, disable demo mode by default to prioritize real data
   demoMode: !hasEnvConfig, 
   maintenanceEmail: 'maintenance@staysync.hotel',
   firebaseConfig: {
@@ -32,21 +31,29 @@ const getCloudData = async <T>(collectionName: string): Promise<T[]> => {
   const firestore = getFirebaseDB();
   if (!firestore) throw new Error("Cloud database not connected");
   
-  const querySnapshot = await getDocs(collection(firestore, collectionName));
-  const data: T[] = [];
-  querySnapshot.forEach((doc) => {
-    // We assume the doc ID is part of the data object as 'id'
-    data.push(doc.data() as T);
-  });
-  return data;
+  try {
+    const querySnapshot = await getDocs(collection(firestore, collectionName));
+    const data: T[] = [];
+    querySnapshot.forEach((doc) => {
+      // We assume the doc ID is part of the data object as 'id'
+      data.push(doc.data() as T);
+    });
+    return data;
+  } catch (err: any) {
+    if (err.code === 'permission-denied') {
+      console.warn(`Permission denied accessing ${collectionName}. Check Firestore rules.`);
+    } else {
+      console.error(`Error fetching ${collectionName}:`, err);
+    }
+    return [];
+  }
 };
 
 const saveCloudData = async <T extends { id: string }>(collectionName: string, data: T[]): Promise<void> => {
   const firestore = getFirebaseDB();
   if (!firestore) throw new Error("Cloud database not connected");
 
-  // Firestore Batch allows up to 500 operations. For a small hotel app, this is okay.
-  // For larger scale, we would need to chunk this.
+  // Firestore Batch allows up to 500 operations.
   const batch = writeBatch(firestore);
   
   data.forEach((item) => {
@@ -66,7 +73,6 @@ export const StorageService = {
       if (record) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, ...settings } = record;
-        // Initialize firebase if config exists
         const appSettings = settings as AppSettings;
         if (appSettings.dataSource === 'Cloud' && appSettings.firebaseConfig) {
           initializeFirebase(appSettings);
@@ -74,7 +80,7 @@ export const StorageService = {
         return appSettings;
       }
       
-      // If no local settings, use defaults (which might include Env Var config)
+      // If no local settings, use defaults
       if (DEFAULT_SETTINGS.dataSource === 'Cloud' && DEFAULT_SETTINGS.firebaseConfig) {
         initializeFirebase(DEFAULT_SETTINGS);
       }
@@ -103,16 +109,23 @@ export const StorageService = {
     if (settings.dataSource === 'Cloud') {
       try {
         const cloudData = await getCloudData<T>(collectionName);
-        if (cloudData.length === 0 && settings.demoMode && mockData.length > 0) {
-           // Seed Cloud with Mock Data if empty
-           await saveCloudData(collectionName, mockData);
-           return mockData;
+        
+        // Strict Rule: Never auto-seed STAFF or Guests in Cloud Mode to avoid polluting real DB with mocks.
+        // User must manually create their first admin.
+        if (collectionName === 'staff' || collectionName === 'guests') {
+          return cloudData;
         }
+
+        // For other collections (Rooms, etc.), we only seed if explicitly requested via Demo Mode toggle (handled in Settings)
+        // or if we really want a baseline. For now, we return empty if Cloud is empty.
+        // This effectively "Replaces mock data with real data" (or lack thereof).
         return cloudData;
+
       } catch (error) {
         console.error(`Cloud fetch failed for ${collectionName}:`, error);
-        // If config implies cloud but it fails, we might be offline or config is bad.
-        // For now, we alert. In a real app, we might fallback to local cache.
+        // Fallback to local if cloud fails? 
+        // For security, if cloud fails, we probably shouldn't show local data unless synced.
+        return []; 
       }
     }
 
@@ -145,8 +158,6 @@ export const StorageService = {
         await saveCloudData(collectionName, data);
       } catch (error) {
         console.error(`Failed to save to cloud`, error);
-        // Note: For a robust app, we'd queue this for retry.
-        console.warn("Warning: Saved locally, but Cloud sync failed.");
       }
     }
   },
@@ -203,7 +214,6 @@ export const StorageService = {
   },
 
   getDocuments: async (): Promise<StoredDocument[]> => {
-    // No mocks for documents for now
     return StorageService.getOrSeedData(db.documents, [], 'documents');
   },
   saveDocuments: async (documents: StoredDocument[]) => {

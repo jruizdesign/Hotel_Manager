@@ -152,8 +152,8 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
     
     setTimeout(() => {
       setIsSaving(false);
-      onDataReset();
-      alert("Configuration Saved! You may need to refresh the page for cloud connection to activate.");
+      alert("Configuration Saved! The system will now reload to apply connection changes.");
+      window.location.reload();
     }, 800);
   };
   

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Shield, Lock, ChevronRight, Server, Building2, AlertCircle, CloudOff, KeyRound, ArrowLeft, Mail, CheckCircle2, UserPlus, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, Lock, ChevronRight, Server, Building2, AlertCircle, CloudOff, KeyRound, ArrowLeft, Mail, CheckCircle2, UserPlus, Info, Cloud } from 'lucide-react';
 import { loginTerminal, resetTerminalPassword, registerTerminalUser } from '../services/firebase';
+import { StorageService } from '../services/storage';
 
 const TerminalAuth: React.FC = () => {
   const [view, setView] = useState<'login' | 'forgot' | 'register'>('login');
@@ -10,6 +11,15 @@ const TerminalAuth: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCloudMode, setIsCloudMode] = useState(false);
+
+  useEffect(() => {
+    const checkSettings = async () => {
+      const settings = await StorageService.getSettings();
+      setIsCloudMode(settings.dataSource === 'Cloud');
+    };
+    checkSettings();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +38,7 @@ const TerminalAuth: React.FC = () => {
       } else if (err.code === 'auth/too-many-requests') {
         setError("Too many failed attempts. Try again later.");
       } else {
-        setError("Authentication Failed. Check connection.");
+        setError(err.message || "Authentication Failed. Check connection.");
       }
       setIsLoading(false);
     }
@@ -118,7 +128,13 @@ const TerminalAuth: React.FC = () => {
             <Building2 size={40} className="text-emerald-500" />
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">StaySync Cloud</h1>
-          <p className="text-slate-500 mt-2 text-sm">Authorized Terminal Access</p>
+          <p className="text-slate-500 mt-2 text-sm flex items-center justify-center gap-2">
+            {isCloudMode ? (
+              <span className="text-emerald-400 flex items-center gap-1"><Cloud size={14} /> Live Cloud Access</span>
+            ) : (
+              <span className="text-amber-400 flex items-center gap-1"><CloudOff size={14} /> Offline Mode</span>
+            )}
+          </p>
         </div>
 
         <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-8 shadow-2xl transition-all duration-300">
@@ -126,15 +142,17 @@ const TerminalAuth: React.FC = () => {
           {view === 'login' && (
             <form onSubmit={handleLogin} className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
               
-              {/* Default Credential Hint */}
-              <div className="bg-blue-900/20 border border-blue-500/30 p-3 rounded-lg flex gap-3 items-start">
-                 <Info className="text-blue-400 shrink-0 mt-0.5" size={16} />
-                 <div className="text-xs text-blue-200">
-                   <p className="font-bold mb-1">Default Login (Offline Mode)</p>
-                   <p>Email: <code className="bg-blue-900/50 px-1 rounded text-white">admin@hotel.com</code></p>
-                   <p>Pass: <code className="bg-blue-900/50 px-1 rounded text-white">password123</code></p>
-                 </div>
-              </div>
+              {/* Only show default login hint if NOT in Cloud Mode */}
+              {!isCloudMode && (
+                <div className="bg-blue-900/20 border border-blue-500/30 p-3 rounded-lg flex gap-3 items-start">
+                   <Info className="text-blue-400 shrink-0 mt-0.5" size={16} />
+                   <div className="text-xs text-blue-200">
+                     <p className="font-bold mb-1">Default Login (Offline Mode)</p>
+                     <p>Email: <code className="bg-blue-900/50 px-1 rounded text-white">admin@hotel.com</code></p>
+                     <p>Pass: <code className="bg-blue-900/50 px-1 rounded text-white">password123</code></p>
+                   </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
@@ -144,7 +162,7 @@ const TerminalAuth: React.FC = () => {
                   type="email" 
                   autoFocus
                   required
-                  placeholder="admin@hotel.com"
+                  placeholder={isCloudMode ? "your@email.com" : "admin@hotel.com"}
                   className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-lg py-3 px-4 text-white placeholder-slate-600 outline-none transition-all shadow-inner"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setError(null); }}
@@ -166,15 +184,17 @@ const TerminalAuth: React.FC = () => {
                     onChange={(e) => { setPassword(e.target.value); setError(null); }}
                   />
                 </div>
-                <div className="flex justify-end mt-2">
-                   <button 
-                     type="button" 
-                     onClick={() => resetState('forgot')}
-                     className="text-xs text-emerald-500 hover:text-emerald-400 font-medium"
-                   >
-                     Forgot Password?
-                   </button>
-                </div>
+                {isCloudMode && (
+                  <div className="flex justify-end mt-2">
+                     <button 
+                       type="button" 
+                       onClick={() => resetState('forgot')}
+                       className="text-xs text-emerald-500 hover:text-emerald-400 font-medium"
+                     >
+                       Forgot Password?
+                     </button>
+                  </div>
+                )}
               </div>
 
               {error && (
@@ -229,7 +249,7 @@ const TerminalAuth: React.FC = () => {
                   type="email" 
                   autoFocus
                   required
-                  placeholder="admin@hotel.com"
+                  placeholder={isCloudMode ? "your@email.com" : "admin@hotel.com"}
                   className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-lg py-3 px-4 text-white placeholder-slate-600 outline-none transition-all shadow-inner"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setError(null); }}
@@ -320,7 +340,7 @@ const TerminalAuth: React.FC = () => {
                     type="email" 
                     autoFocus
                     required
-                    placeholder="admin@hotel.com"
+                    placeholder="your@email.com"
                     className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-600 outline-none transition-all shadow-inner"
                     value={email}
                     onChange={(e) => { setEmail(e.target.value); setError(null); setSuccess(null); }}
@@ -371,7 +391,7 @@ const TerminalAuth: React.FC = () => {
         <div className="mt-8 text-center space-y-2">
           <p className="text-xs text-slate-600">
             <Shield size={12} className="inline mr-1" />
-            Secured by Google Firebase Authentication
+            {isCloudMode ? "Secured by Google Firebase" : "Local Encrypted Storage"}
           </p>
         </div>
       </div>

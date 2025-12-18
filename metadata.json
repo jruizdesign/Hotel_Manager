@@ -1,7 +1,5 @@
 {
   "name": "StaySync - Smart Hotel Management",
   "description": "A comprehensive, AI-powered hotel management dashboard for tracking rooms, guests, staff, and finances with export capabilities.",
-  "requestFramePermissions": [
-    "camera"
-  ]
+  "requestFramePermissions": []
 }

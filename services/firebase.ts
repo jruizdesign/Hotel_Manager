@@ -1,16 +1,17 @@
-import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { initializeApp, FirebaseApp } from "firebase/app";
+import { getFirestore, Firestore } from "firebase/firestore";
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
   signOut, 
+  onAuthStateChanged, 
   sendPasswordResetEmail, 
-  onAuthStateChanged,
-  updatePassword,
-  Auth, 
-  User
+  createUserWithEmailAndPassword, 
+  updatePassword, 
+  User, 
+  Auth 
 } from "firebase/auth";
-import { getFirestore, Firestore } from "firebase/firestore";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { AppSettings } from "../types";
 
 let dbInstance: Firestore | null = null;
@@ -20,27 +21,33 @@ let appInstance: FirebaseApp | null = null;
 // Manual subscribers to handle "Offline/Mock" login state updates
 let authSubscribers: ((user: User | null) => void)[] = [];
 
-// Local Storage Key for Mock Users
-const LOCAL_USERS_KEY = 'staysync_local_users';
-
 export const initializeFirebase = (settings: AppSettings): Firestore | null => {
   if (!settings.firebaseConfig || !settings.firebaseConfig.apiKey) {
     return null;
   }
 
   // Prevent double initialization
-  if (getApps().length > 0) {
-    appInstance = getApp();
-    dbInstance = getFirestore(appInstance);
-    authInstance = getAuth(appInstance);
+  if (appInstance) {
+    if (!dbInstance) {
+      dbInstance = getFirestore(appInstance);
+    }
+    if (!authInstance) {
+        authInstance = getAuth(appInstance);
+    }
     return dbInstance;
   }
 
   try {
     appInstance = initializeApp(settings.firebaseConfig);
 
-    // Initialize App Check if configured (Optional)
-    // Code for App Check would go here using modular SDK if required.
+    // Initialize App Check
+    // Using the site key provided in the integration request
+    if (typeof window !== 'undefined') {
+      initializeAppCheck(appInstance, {
+        provider: new ReCaptchaV3Provider('abcdefghijklmnopqrstuvwxy-1234567890abcd'),
+        isTokenAutoRefreshEnabled: true
+      });
+    }
 
     dbInstance = getFirestore(appInstance);
     authInstance = getAuth(appInstance);
@@ -55,108 +62,70 @@ export const getFirebaseDB = (): Firestore | null => {
   return dbInstance;
 };
 
-// --- Mock Auth Helpers ---
-
-const getLocalUsers = () => {
-  try {
-    return JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
-  } catch { return []; }
-};
-
-const saveLocalUser = (user: any) => {
-  const users = getLocalUsers();
-  users.push(user);
-  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
-};
-
-const createMockUserObject = (data: any): any => ({
-    uid: data.uid || 'mock-uid-' + Date.now(),
-    email: data.email,
-    displayName: data.displayName || data.email.split('@')[0],
-    emailVerified: true,
-    isAnonymous: false,
-    metadata: {},
-    providerData: [],
-    refreshToken: '',
-    tenantId: null,
-    delete: async () => {},
-    getIdToken: async () => 'mock-token',
-    getIdTokenResult: async () => ({
-        token: 'mock-token',
-        signInProvider: 'custom',
-        claims: {},
-        authTime: Date.now().toString(),
-        issuedAtTime: Date.now().toString(),
-        expirationTime: (Date.now() + 3600000).toString(),
-    }),
-    reload: async () => {},
-    toJSON: () => ({})
-});
-
 // --- Authentication Exports ---
 
 export const loginTerminal = async (email: string, pass: string) => {
-    // 1. LIVE MODE: If Firebase is initialized, STRICTLY use Firebase.
+    // 1. Try Firebase Login FIRST if initialized
     if (authInstance) {
-        return await signInWithEmailAndPassword(authInstance, email, pass);
+        try {
+            return await signInWithEmailAndPassword(authInstance, email, pass);
+        } catch (error: any) {
+            // Only fallback to offline mode if it's a connection error AND credentials match default
+            const isNetworkError = error.code === 'auth/network-request-failed' || error.code === 'auth/internal-error';
+            const isOfflineCreds = email === 'admin@hotel.com' && pass === 'password123';
+
+            if (!isNetworkError || !isOfflineCreds) {
+                throw error;
+            }
+            console.warn("Cloud login failed (Network). Falling back to offline admin.");
+        }
     }
 
-    // 2. OFFLINE / DEMO MODE
+    // 2. Default Bypass for Testing/Offline Mode
+    // Reached if authInstance is null OR (authInstance exists + network error + matching creds)
     if (email === 'admin@hotel.com' && pass === 'password123') {
-        const mockUser = createMockUserObject({
+        const mockUser: any = {
             uid: 'offline-admin-123',
             email: 'admin@hotel.com',
-            displayName: 'System Admin (Offline)'
-        });
+            displayName: 'System Admin (Offline)',
+            emailVerified: true,
+            isAnonymous: false,
+            metadata: {},
+            providerData: [],
+            refreshToken: '',
+            tenantId: null,
+            delete: async () => {},
+            getIdToken: async () => 'mock-token',
+            getIdTokenResult: async () => ({
+                token: 'mock-token',
+                signInProvider: 'custom',
+                claims: {},
+                authTime: Date.now().toString(),
+                issuedAtTime: Date.now().toString(),
+                expirationTime: (Date.now() + 3600000).toString(),
+            }),
+            reload: async () => {},
+            toJSON: () => ({})
+        };
         
+        // Notify app that we are logged in
         authSubscribers.forEach(cb => cb(mockUser));
         return { user: mockUser };
     }
 
-    // 3. OFFLINE: Check local mock storage
-    const localUsers = getLocalUsers();
-    const found = localUsers.find((u: any) => u.email === email && u.password === pass);
+    // 3. Error if no auth instance and not using offline creds
+    if (!authInstance) throw new Error("Cloud connection not active. Use default admin@hotel.com / password123");
     
-    if (found) {
-          const mockUser = createMockUserObject(found);
-          authSubscribers.forEach(cb => cb(mockUser));
-          return { user: mockUser };
-    }
-
-    throw new Error("Invalid credentials (Offline Mode). Cloud Sync is disabled.");
+    throw new Error("Authentication failed");
 };
 
 export const registerTerminalUser = async (email: string, pass: string) => {
-    // 1. LIVE MODE
-    if (authInstance) {
-        return await createUserWithEmailAndPassword(authInstance, email, pass);
-    }
-
-    // 2. OFFLINE MODE
-    // Simulate Registration in Local Storage
-    const localUsers = getLocalUsers();
-    if (localUsers.find((u: any) => u.email === email)) {
-            throw new Error("Email already in use (Offline Mode).");
-    }
-    
-    const newUser = {
-        uid: `local-${Date.now()}`,
-        email,
-        password: pass, 
-        displayName: email.split('@')[0]
-    };
-    saveLocalUser(newUser);
-    
-    const mockUser = createMockUserObject(newUser);
-    authSubscribers.forEach(cb => cb(mockUser));
-    return { user: mockUser };
+    if (!authInstance) throw new Error("Cloud connection not active. Check settings.");
+    return await createUserWithEmailAndPassword(authInstance, email, pass);
 };
 
 export const changeUserPassword = async (newPassword: string) => {
-    if (!authInstance) {
-        throw new Error("Password change for Offline Admin is not supported. Use Cloud Sync for full features.");
-    }
-    if (!authInstance.currentUser) throw new Error("No active cloud user found.");
+    if (!authInstance || !authInstance.currentUser) throw new Error("No active cloud user found.");
     return await updatePassword(authInstance.currentUser, newPassword);
 };
 
@@ -170,9 +139,7 @@ export const logoutTerminal = async () => {
 };
 
 export const resetTerminalPassword = async (email: string) => {
-    if (!authInstance) {
-        throw new Error("Password reset unavailable in Offline Mode. Contact system administrator.");
-    }
+    if (!authInstance) throw new Error("Cloud connection not active. Check settings.");
     return await sendPasswordResetEmail(authInstance, email);
 };
 
@@ -180,9 +147,10 @@ export const subscribeToAuthChanges = (callback: (user: User | null) => void) =>
     // Register the subscriber
     authSubscribers.push(callback);
     
-    // If not initialized yet, we check if firebase is already active globally
-    if (!authInstance && getApps().length > 0) {
-        authInstance = getAuth(getApp());
+    // If not initialized yet, we can't subscribe to real Firebase yet.
+    // In a real app, we might wait, but here we assume init happens early in App.tsx
+    if (!authInstance && appInstance) {
+        authInstance = getAuth(appInstance);
     }
     
     // If Firebase is active, hook up the real listener
@@ -191,6 +159,7 @@ export const subscribeToAuthChanges = (callback: (user: User | null) => void) =>
             callback(user);
         });
         
+        // Return a cleanup function that removes from our array AND unsubscribes from Firebase
         return () => {
             authSubscribers = authSubscribers.filter(cb => cb !== callback);
             unsubscribeFirebase();

@@ -107,7 +107,7 @@ const Dashboard: React.FC<DashboardProps> = ({ rooms, guests, maintenance, trans
                 <Tooltip 
                   cursor={{ fill: '#f8fafc' }}
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, 'Income'] as [string, string]}
+                  formatter={(value: number) => [`$${value.toLocaleString()}`, 'Income']}
                   labelFormatter={(label) => {
                      const item = revenueData.find(d => d.name === label);
                      return item ? `${label} (${item.date})` : label;

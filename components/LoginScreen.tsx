@@ -21,7 +21,7 @@ import {
   Building2
 } from 'lucide-react';
 import { loginTerminal, logoutTerminal } from '../services/firebase';
-import Recaptcha from './reCaptcha';
+import Recaptcha from './reCaptcha/index';
 interface LoginScreenProps {
   staff: Staff[];
   onLogin: (user: CurrentUser) => void;

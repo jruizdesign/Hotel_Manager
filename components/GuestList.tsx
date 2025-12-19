@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Guest, UserRole, BookingHistory, Room, Transaction, RoomStatus, DNRRecord } from '../types';
 import { 
   Users, Plus, X, Search, Calendar, Star, AlertCircle, History, 
   Clock, UserCheck, UserPlus, Receipt, DollarSign, CheckCircle2, 
   Pencil, Ban, Trash2, Camera, Upload, LogOut, Mail, Sparkles, 
-  Send, ChevronRight, RefreshCw, MoreVertical, Phone, MessageSquare
+  Send, ChevronRight, RefreshCw, MoreVertical, Phone, MessageSquare, AlertTriangle, FileText
 } from 'lucide-react';
 import { generateAIResponse } from '../services/geminiService';
 
@@ -28,7 +29,7 @@ interface GuestListProps {
   onClearExternalRequest?: () => void;
 }
 
-const API_URL = 'http://localhost:3000'; // Helper for email backend
+const API_URL = 'http://localhost:3000'; 
 
 const GuestList: React.FC<GuestListProps> = ({ 
   guests, 
@@ -46,23 +47,19 @@ const GuestList: React.FC<GuestListProps> = ({
   externalBookingRequest, 
   onClearExternalRequest 
 }) => {
-  // --- View State ---
   const [activeTab, setActiveTab] = useState<'directory' | 'dnr'>('directory');
   const [selectedGuestId, setSelectedGuestId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // --- Modal States ---
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [isDNRModalOpen, setIsDNRModalOpen] = useState(false);
   
-  // --- AI Email State ---
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
-  // --- Form States ---
   const [formData, setFormData] = useState<Omit<Guest, 'id'>>({
     name: '', email: '', phone: '', roomNumber: '', checkIn: '', checkOut: '', vip: false, status: 'Reserved', balance: 0
   });
@@ -74,7 +71,6 @@ const GuestList: React.FC<GuestListProps> = ({
   const [paymentNote, setPaymentNote] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Derived State ---
   const selectedGuest = guests.find(g => g.id === selectedGuestId) || null;
   const filteredGuests = guests.filter(guest => 
     guest.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -85,27 +81,12 @@ const GuestList: React.FC<GuestListProps> = ({
     record.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- Helpers ---
   const getGuestTransactions = (guestId: string) => transactions.filter(t => t.guestId === guestId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   
-  const calculateAccruedCharges = (guest: Guest) => {
-    const room = rooms.find(r => r.number === guest.roomNumber);
-    if (!room) return 0;
-    const price = room.discount ? room.price * (1 - room.discount / 100) : room.price;
-    const checkIn = new Date(guest.checkIn);
-    const checkOut = new Date(guest.checkOut);
-    const today = new Date();
-    const endDate = today < checkOut ? today : checkOut;
-    const diffDays = Math.max(1, Math.ceil(Math.abs(endDate.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24))); 
-    return Math.round(diffDays * price);
-  };
-
   const calculateTotalPaid = (guestId: string) => {
     return getGuestTransactions(guestId).filter(t => t.type === 'Income').reduce((acc, t) => acc + t.amount, 0);
   };
 
-  // --- Handlers ---
-  
   useEffect(() => {
     if (externalBookingRequest?.isOpen) {
       setActiveTab('directory');
@@ -142,12 +123,14 @@ const GuestList: React.FC<GuestListProps> = ({
 
   const handleCheckOutGuest = () => {
     if (selectedGuest) {
+      if (selectedGuest.balance > 0) {
+        alert(`Cannot checkout: Guest has an outstanding balance of $${selectedGuest.balance}. Please log a payment first.`);
+        return;
+      }
       const room = rooms.find(r => r.number === selectedGuest.roomNumber);
       if (room) onCheckOut(room.id);
     }
   };
-
-  // --- AI Email Logic ---
 
   const generateEmailDraft = async (topic: string) => {
     if (!selectedGuest) return;
@@ -156,6 +139,7 @@ const GuestList: React.FC<GuestListProps> = ({
     const context = `
       Guest Name: ${selectedGuest.name}
       Room: ${selectedGuest.roomNumber}
+      Balance: $${selectedGuest.balance}
       Status: ${selectedGuest.status}
       VIP: ${selectedGuest.vip ? 'Yes' : 'No'}
       Check-In: ${selectedGuest.checkIn}
@@ -170,8 +154,6 @@ const GuestList: React.FC<GuestListProps> = ({
     Output: Only the email content. Do not include "Here is the email" prefix.`;
 
     const response = await generateAIResponse(prompt, context);
-    
-    // Simple parsing to separate subject (heuristic)
     const lines = response.split('\n');
     let subject = "Update from StaySync";
     let body = response;
@@ -216,11 +198,8 @@ const GuestList: React.FC<GuestListProps> = ({
     }
   };
 
-  // --- Render Sections ---
-
   const renderGuestList = () => (
     <div className="flex-1 bg-white rounded-l-2xl shadow-sm border-r border-slate-200 flex flex-col h-[calc(100vh-140px)]">
-      {/* List Header */}
       <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
         <h3 className="font-bold text-slate-700">Guest Directory ({filteredGuests.length})</h3>
         <button 
@@ -231,7 +210,6 @@ const GuestList: React.FC<GuestListProps> = ({
         </button>
       </div>
 
-      {/* Scrollable List */}
       <div className="flex-1 overflow-y-auto">
         {filteredGuests.map(guest => (
           <div 
@@ -255,6 +233,7 @@ const GuestList: React.FC<GuestListProps> = ({
                         {guest.status}
                       </span>
                       {guest.vip && <Star size={10} className="text-amber-400 fill-amber-400" />}
+                      {guest.balance > 0 && <span className="w-1.5 h-1.5 bg-red-500 rounded-full" title="Outstanding Balance"></span>}
                    </div>
                 </div>
                 <ChevronRight size={16} className={`mt-2 transition-transform ${selectedGuestId === guest.id ? 'text-emerald-500 translate-x-1' : 'text-slate-300'}`} />
@@ -275,14 +254,11 @@ const GuestList: React.FC<GuestListProps> = ({
       );
     }
 
-    const accrued = calculateAccruedCharges(selectedGuest);
-    const paid = calculateTotalPaid(selectedGuest.id);
-    const balance = accrued - paid;
     const historyItems = history.filter(h => h.guestId === selectedGuest.id);
+    const hasBalance = selectedGuest.balance > 0;
 
     return (
       <div className="flex-[2] bg-white rounded-r-2xl border-y border-r border-slate-200 h-[calc(100vh-140px)] overflow-y-auto flex flex-col">
-         {/* Profile Header */}
          <div className="p-6 border-b border-slate-100">
             <div className="flex justify-between items-start mb-4">
                <div className="flex items-center gap-4">
@@ -300,14 +276,25 @@ const GuestList: React.FC<GuestListProps> = ({
                     </div>
                   </div>
                </div>
-               <div className="flex gap-2">
+               <div className="flex flex-col items-end gap-2">
                  {selectedGuest.status === 'Checked In' && (
                    <button 
                      onClick={handleCheckOutGuest}
-                     className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-xs font-bold transition-colors"
+                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
+                       hasBalance 
+                        ? 'bg-red-50 text-red-600 border-red-200 cursor-not-allowed opacity-80' 
+                        : 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-700'
+                     }`}
+                     title={hasBalance ? "Payment Required before Checkout" : "Proceed with Checkout"}
                    >
-                     <LogOut size={14} /> Check Out
+                     {hasBalance ? <AlertTriangle size={14} /> : <LogOut size={14} />} 
+                     {hasBalance ? "Blocked (Pay Balance)" : "Check Out"}
                    </button>
+                 )}
+                 {hasBalance && (
+                    <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                       <DollarSign size={10}/> $0 Balance required for checkout
+                    </p>
                  )}
                </div>
             </div>
@@ -321,9 +308,9 @@ const GuestList: React.FC<GuestListProps> = ({
                  <p className="text-[10px] uppercase font-bold text-slate-400">Dates</p>
                  <p className="font-medium text-sm text-slate-800">{new Date(selectedGuest.checkIn).toLocaleDateString()} - {new Date(selectedGuest.checkOut).toLocaleDateString()}</p>
                </div>
-               <div className="p-3 bg-slate-50 rounded-lg">
-                 <p className="text-[10px] uppercase font-bold text-slate-400">Balance</p>
-                 <p className={`font-bold text-lg ${balance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>${balance}</p>
+               <div className={`p-3 rounded-lg border ${hasBalance ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                 <p className="text-[10px] uppercase font-bold text-slate-400">Balance Due</p>
+                 <p className={`font-bold text-lg ${hasBalance ? 'text-red-500' : 'text-emerald-600'}`}>${selectedGuest.balance}</p>
                </div>
                <div className="p-3 bg-slate-50 rounded-lg">
                  <p className="text-[10px] uppercase font-bold text-slate-400">Status</p>
@@ -332,10 +319,7 @@ const GuestList: React.FC<GuestListProps> = ({
             </div>
          </div>
 
-         {/* CRM Content */}
          <div className="flex-1 p-6 space-y-8">
-            
-            {/* AI Communicator Section */}
             <section className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-1 border border-indigo-100">
                <div className="bg-white/60 backdrop-blur rounded-lg p-5">
                   <div className="flex items-center gap-2 mb-4">
@@ -352,9 +336,9 @@ const GuestList: React.FC<GuestListProps> = ({
                     <div className="space-y-4">
                        <div className="flex gap-2 overflow-x-auto pb-2">
                           <button onClick={() => generateEmailDraft("Welcome and Check-in details")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-indigo-200 rounded-full text-xs font-medium text-indigo-700 hover:bg-indigo-50 transition-colors">👋 Welcome Email</button>
+                          {hasBalance && <button onClick={() => generateEmailDraft("Friendly balance reminder")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-red-200 rounded-full text-xs font-medium text-red-700 hover:bg-red-50 transition-colors">💸 Payment Reminder</button>}
                           <button onClick={() => generateEmailDraft("Confirm late check-out")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-indigo-200 rounded-full text-xs font-medium text-indigo-700 hover:bg-indigo-50 transition-colors">⏰ Late Checkout</button>
                           <button onClick={() => generateEmailDraft("Ask for feedback after stay")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-indigo-200 rounded-full text-xs font-medium text-indigo-700 hover:bg-indigo-50 transition-colors">⭐ Request Feedback</button>
-                          <button onClick={() => generateEmailDraft("Apologize for maintenance noise")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-indigo-200 rounded-full text-xs font-medium text-indigo-700 hover:bg-indigo-50 transition-colors">🔧 Maint. Apology</button>
                        </div>
                        
                        <div className="relative">
@@ -419,31 +403,41 @@ const GuestList: React.FC<GuestListProps> = ({
                </div>
             </section>
 
-            {/* Billing Section */}
             <section>
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Receipt size={18} className="text-slate-400" /> Billing & Payments</h3>
+              <div className="flex items-center justify-between mb-4">
+                 <h3 className="font-bold text-slate-800 flex items-center gap-2"><Receipt size={18} className="text-slate-400" /> Billing & Payments</h3>
+                 {hasBalance && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold animate-pulse">Payment Pending</span>}
+              </div>
               <div className="flex gap-6">
                  <div className="flex-1 space-y-3">
                     <form onSubmit={handlePaymentSubmit} className="space-y-3">
+                       <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                          <input 
+                            type="number" step="0.01" min="0" placeholder="Amount" required
+                            className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 font-bold"
+                            value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)}
+                          />
+                       </div>
                        <input 
-                         type="number" step="0.01" min="0" placeholder="Amount ($)" required
-                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500"
-                         value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)}
-                       />
-                       <input 
-                         type="text" placeholder="Note (e.g. Cash)"
+                         type="text" placeholder="Method (e.g. Cash, Visa)"
                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500"
                          value={paymentNote} onChange={e => setPaymentNote(e.target.value)}
                        />
-                       <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-900 transition-colors">Add Payment</button>
+                       <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg text-sm font-bold hover:bg-slate-900 transition-colors shadow-sm flex items-center justify-center gap-2">
+                         <DollarSign size={14}/> Log Payment & Receipt
+                       </button>
                     </form>
                  </div>
                  <div className="flex-1 bg-slate-50 rounded-lg p-4 border border-slate-100 max-h-48 overflow-y-auto">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Recent Transactions</h4>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Recent Activity</h4>
                     <div className="space-y-2">
                        {getGuestTransactions(selectedGuest.id).map(t => (
-                         <div key={t.id} className="flex justify-between text-xs">
-                           <span className="text-slate-600">{t.description}</span>
+                         <div key={t.id} className="flex justify-between items-center text-xs group">
+                           <div className="flex items-center gap-2">
+                              {t.type === 'Income' ? <CheckCircle2 size={12} className="text-emerald-500" /> : <FileText size={12} className="text-blue-500" />}
+                              <span className="text-slate-600">{t.description}</span>
+                           </div>
                            <span className={`font-mono font-bold ${t.type === 'Income' ? 'text-emerald-600' : 'text-slate-800'}`}>
                              {t.type === 'Income' ? '-' : '+'}${t.amount}
                            </span>
@@ -455,7 +449,6 @@ const GuestList: React.FC<GuestListProps> = ({
               </div>
             </section>
             
-            {/* History Section */}
             {historyItems.length > 0 && (
               <section>
                  <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><History size={18} className="text-slate-400" /> Stay History</h3>
@@ -480,7 +473,6 @@ const GuestList: React.FC<GuestListProps> = ({
 
   return (
     <div className="h-full flex flex-col space-y-6">
-      {/* Top Bar Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <p className="text-xs text-slate-500 uppercase font-bold">Total Guests</p>
@@ -495,12 +487,11 @@ const GuestList: React.FC<GuestListProps> = ({
             <p className="text-2xl font-bold text-amber-500">{guests.filter(g => g.checkOut === new Date().toISOString().split('T')[0]).length}</p>
          </div>
          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <p className="text-xs text-slate-500 uppercase font-bold">VIP Guests</p>
-            <p className="text-2xl font-bold text-purple-600">{guests.filter(g => g.vip).length}</p>
+            <p className="text-xs text-slate-500 uppercase font-bold">Outstanding</p>
+            <p className="text-2xl font-bold text-red-500">{guests.filter(g => g.balance > 0).length}</p>
          </div>
       </div>
 
-      {/* Main Content Area */}
       <div className="flex items-center justify-between">
          <div className="flex gap-4">
              <button onClick={() => setActiveTab('directory')} className={`text-sm font-bold pb-1 ${activeTab === 'directory' ? 'text-slate-800 border-b-2 border-slate-800' : 'text-slate-400'}`}>Guest Directory</button>
@@ -516,14 +507,12 @@ const GuestList: React.FC<GuestListProps> = ({
          </div>
       </div>
 
-      {/* Split View */}
       {activeTab === 'directory' ? (
         <div className="flex items-start">
            {renderGuestList()}
            {renderGuestDetail()}
         </div>
       ) : (
-        /* DNR View */
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
            <div className="flex justify-between mb-6">
               <h3 className="font-bold text-slate-800 flex items-center gap-2"><Ban className="text-red-500" /> Do Not Rent List</h3>
@@ -550,7 +539,6 @@ const GuestList: React.FC<GuestListProps> = ({
         </div>
       )}
 
-      {/* Modals (Booking & DNR) */}
       {isBookingModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">

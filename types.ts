@@ -63,21 +63,22 @@ export interface MaintenanceTicket {
 export interface Staff {
   id: string;
   name: string;
-  email?: string; // Added for Firebase Auth integration
+  email?: string; 
   role: 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
   status: 'On Duty' | 'Off Duty' | 'Break';
   shift: string;
-  pin: string; // Security PIN for login
+  pin: string; 
 }
 
-export type AttendanceAction = 'CLOCK_IN' | 'CLOCK_OUT' | 'START_BREAK' | 'END_BREAK';
+export type AttendanceAction = 'CLOCK_IN' | 'CLOCK_OUT' | 'START_BREAK' | 'END_BREAK' | 'MANUAL_ADJUST';
 
 export interface AttendanceLog {
   id: string;
   staffId: string;
-  staffName: string; // Denormalized for easier display
+  staffName: string;
   action: AttendanceAction;
-  timestamp: string; // ISO String
+  timestamp: string; 
+  notes?: string;
 }
 
 export interface Transaction {
@@ -87,18 +88,19 @@ export interface Transaction {
   amount: number;
   description: string;
   type: 'Income' | 'Expense';
-  guestId?: string; // Optional link to a specific guest
+  guestId?: string; 
 }
 
 export interface StoredDocument {
   id: string;
   title: string;
-  category: 'Invoice' | 'Guest ID' | 'Contract' | 'Report' | 'Other';
-  date: string; // ISO Date String
-  fileData: string; // Base64 Encoded Data
-  fileType: string; // MIME Type (e.g., 'application/pdf')
-  size: number; // Bytes
+  category: 'Invoice' | 'Receipt' | 'Guest ID' | 'Contract' | 'Report' | 'Other';
+  date: string; 
+  fileData: string; 
+  fileType: string; 
+  size: number; 
   description?: string;
+  guestId?: string; // Optional link to guest
 }
 
 export interface FeatureRequest {
@@ -116,7 +118,7 @@ export interface DNRRecord {
   name: string;
   reason: string;
   notes: string;
-  photo?: string; // Base64 encoded string
+  photo?: string; 
   dateAdded: string;
 }
 
@@ -125,7 +127,7 @@ export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staf
 export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 
 export interface CurrentUser {
-  id?: string; // Added to track specific staff ID
+  id?: string; 
   name: string;
   role: UserRole;
   avatarInitials: string;
@@ -146,9 +148,8 @@ export interface AppSettings {
   dataSource: DataSource;
   demoMode: boolean;
   maintenanceEmail?: string;
-  recaptchaSiteKey?: string; // Added for App Check
+  recaptchaSiteKey?: string; 
   firebaseConfig?: FirebaseConfig;
-  // Legacy
   apiBaseUrl?: string;
   apiKey?: string;
 }

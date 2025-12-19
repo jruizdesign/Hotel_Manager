@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import ReCaptcha from './reCaptcha';
 import { CurrentUser, Staff, UserRole } from '../types';
 import { 
   Shield, 
@@ -21,7 +20,7 @@ import {
   Building2
 } from 'lucide-react';
 import { loginTerminal, logoutTerminal } from '../services/firebase';
-import Recaptcha from './reCaptcha/index';
+
 interface LoginScreenProps {
   staff: Staff[];
   onLogin: (user: CurrentUser) => void;
@@ -201,7 +200,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
                  /* CLOUD EMAIL LOGIN */
                  <form onSubmit={handleEmailLogin} className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-500">
                     <div className="text-center">
-
                       <button 
                         type="button"
                         onClick={() => { setAuthMethod('pin'); setMessage(null); }}
@@ -236,32 +234,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
                               placeholder="••••••••"
                             />
                           </div>
-                       </div>
-
-                       <div className="flex justify-center">
-                          <ReCaptcha 
-                            sitekey="6LeCfDAsAAAAAInjL2In0SF5ihzPpktrqXLpo59_" 
-                            callback={async (token: string) => {
-                              try {
-                                const response = await fetch('http://localhost:3000/verify-recaptcha', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ token })
-                                });
-                                const result = await response.json();
-                                if (result.success) {
-                                  console.log("Captcha verified successfully");
-                                  // Optionally set a state here to enable the login button
-                                } else {
-                                  console.error("Captcha verification failed");
-                                  setMessage({ text: "Captcha verification failed", type: 'error' });
-                                }
-                              } catch (error) {
-                                console.error("Error verifying captcha:", error);
-                                setMessage({ text: "Error verifying captcha", type: 'error' });
-                              }
-                            }} 
-                          />
                        </div>
 
                        {message && (

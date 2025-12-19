@@ -1,6 +1,8 @@
+
 import React, { useState } from 'react';
 import { Staff, AttendanceLog, AttendanceAction, UserRole } from '../types';
-import { Briefcase, UserPlus, X, Trash2, CheckCircle, Lock, Clock, Coffee, LogIn, LogOut, History, CalendarClock, Filter, Calendar, User, Mail } from 'lucide-react';
+// Added missing 'Plus' icon to imports
+import { Briefcase, UserPlus, X, Trash2, CheckCircle, Lock, Clock, Coffee, LogIn, LogOut, History, CalendarClock, Filter, Calendar, User, Mail, Edit3, Save, AlertCircle, Plus } from 'lucide-react';
 
 interface StaffListProps {
   staff: Staff[];
@@ -10,7 +12,8 @@ interface StaffListProps {
   onAddStaff: (staff: Omit<Staff, 'id'>) => void;
   onDeleteStaff: (id: string) => void;
   onUpdateStatus: (id: string, status: Staff['status']) => void;
-  onAttendanceAction: (staffId: string, action: AttendanceAction) => void;
+  onAttendanceAction: (staffId: string, action: AttendanceAction, timestamp?: string, notes?: string) => void;
+  onUpdateAttendanceLog: (log: AttendanceLog) => void;
 }
 
 const StaffList: React.FC<StaffListProps> = ({ 
@@ -21,7 +24,8 @@ const StaffList: React.FC<StaffListProps> = ({
   onAddStaff, 
   onDeleteStaff, 
   onUpdateStatus,
-  onAttendanceAction
+  onAttendanceAction,
+  onUpdateAttendanceLog
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'roster' | 'attendance'>('roster');
@@ -30,13 +34,25 @@ const StaffList: React.FC<StaffListProps> = ({
   const [filterDate, setFilterDate] = useState<string>('');
   const [filterStaffId, setFilterStaffId] = useState<string>('All');
   
+  // Editing State
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editTimestamp, setEditTimestamp] = useState('');
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+
   const [newStaff, setNewStaff] = useState<Omit<Staff, 'id'>>({
     name: '',
     email: '',
     role: 'Reception',
     shift: 'Morning',
-    status: 'On Duty',
+    status: 'Off Duty', // Default is Off Duty
     pin: ''
+  });
+
+  const [manualLog, setManualLog] = useState({
+    staffId: '',
+    action: 'CLOCK_IN' as AttendanceAction,
+    timestamp: new Date().toISOString().slice(0, 16),
+    notes: ''
   });
 
   const currentUser = staff.find(s => s.id === currentUserId);
@@ -46,22 +62,37 @@ const StaffList: React.FC<StaffListProps> = ({
     e.preventDefault();
     onAddStaff(newStaff);
     setIsModalOpen(false);
-    setNewStaff({ name: '', email: '', role: 'Reception', shift: 'Morning', status: 'On Duty', pin: '' });
+    setNewStaff({ name: '', email: '', role: 'Reception', shift: 'Morning', status: 'Off Duty', pin: '' });
+  };
+
+  const handleManualLogSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onAttendanceAction(manualLog.staffId, manualLog.action, new Date(manualLog.timestamp).toISOString(), manualLog.notes);
+    setIsManualModalOpen(false);
+    setManualLog({ staffId: '', action: 'CLOCK_IN', timestamp: new Date().toISOString().slice(0, 16), notes: '' });
+  };
+
+  const handleStartEdit = (log: AttendanceLog) => {
+    setEditingLogId(log.id);
+    setEditTimestamp(new Date(log.timestamp).toISOString().slice(0, 16));
+  };
+
+  const handleSaveEdit = (log: AttendanceLog) => {
+    onUpdateAttendanceLog({
+      ...log,
+      timestamp: new Date(editTimestamp).toISOString()
+    });
+    setEditingLogId(null);
   };
 
   const getFilteredLogs = () => {
     return attendanceLogs.filter(log => {
-      // 1. Filter by Date
       let matchesDate = true;
       if (filterDate) {
-        // Convert timestamp to YYYY-MM-DD for comparison
-        const logDate = new Date(log.timestamp).toLocaleDateString('en-CA'); // en-CA gives YYYY-MM-DD format
+        const logDate = new Date(log.timestamp).toLocaleDateString('en-CA'); 
         matchesDate = logDate === filterDate;
       }
-
-      // 2. Filter by Staff
       const matchesStaff = filterStaffId === 'All' ? true : log.staffId === filterStaffId;
-
       return matchesDate && matchesStaff;
     }).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   };
@@ -152,14 +183,24 @@ const StaffList: React.FC<StaffListProps> = ({
             )}
          </div>
 
-         {activeTab === 'roster' && (
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg transition-colors text-sm font-medium shadow-sm"
-            >
-              <UserPlus size={16} /> Add Staff
-            </button>
-         )}
+         <div className="flex gap-2 mb-2">
+           {activeTab === 'attendance' && isManager && (
+             <button 
+               onClick={() => setIsManualModalOpen(true)}
+               className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition-colors text-sm font-medium shadow-sm"
+             >
+               <Plus size={16} /> Manual Override
+             </button>
+           )}
+           {activeTab === 'roster' && (
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg transition-colors text-sm font-medium shadow-sm"
+              >
+                <UserPlus size={16} /> Add Staff
+              </button>
+           )}
+         </div>
       </div>
 
       {activeTab === 'roster' && (
@@ -247,7 +288,6 @@ const StaffList: React.FC<StaffListProps> = ({
                 </h3>
                 
                 <div className="flex flex-wrap items-center gap-2">
-                   {/* Date Filter */}
                    <div className="relative">
                       <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                       <input 
@@ -258,7 +298,6 @@ const StaffList: React.FC<StaffListProps> = ({
                       />
                    </div>
 
-                   {/* Staff Filter */}
                    <div className="relative">
                       <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                       <select
@@ -272,16 +311,6 @@ const StaffList: React.FC<StaffListProps> = ({
                          ))}
                       </select>
                    </div>
-
-                   {/* Reset Button */}
-                   {(filterDate || filterStaffId !== 'All') && (
-                     <button 
-                       onClick={() => { setFilterDate(''); setFilterStaffId('All'); }}
-                       className="text-xs text-slate-500 hover:text-slate-800 underline px-2"
-                     >
-                       Reset
-                     </button>
-                   )}
                 </div>
              </div>
 
@@ -293,37 +322,90 @@ const StaffList: React.FC<StaffListProps> = ({
                      <th className="px-6 py-4">Time</th>
                      <th className="px-6 py-4">Staff Member</th>
                      <th className="px-6 py-4">Action</th>
-                     <th className="px-6 py-4">Status</th>
+                     <th className="px-6 py-4">Notes</th>
+                     <th className="px-6 py-4 text-right">Actions</th>
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-100">
                    {filteredLogs.map(log => (
                      <tr key={log.id} className="hover:bg-slate-50">
                        <td className="px-6 py-4 font-mono text-xs">
-                          {new Date(log.timestamp).toLocaleDateString()} <span className="text-slate-400">|</span> {new Date(log.timestamp).toLocaleTimeString()}
+                          {editingLogId === log.id ? (
+                            <input 
+                              type="datetime-local" 
+                              className="bg-white border rounded p-1"
+                              value={editTimestamp}
+                              onChange={(e) => setEditTimestamp(e.target.value)}
+                            />
+                          ) : (
+                            <>{new Date(log.timestamp).toLocaleDateString()} | {new Date(log.timestamp).toLocaleTimeString()}</>
+                          )}
                        </td>
                        <td className="px-6 py-4 font-medium text-slate-800">{log.staffName}</td>
-                       <td className="px-6 py-4">{log.action.replace('_', ' ')}</td>
                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                          <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
                              log.action === 'CLOCK_IN' ? 'bg-emerald-100 text-emerald-700' :
                              log.action === 'CLOCK_OUT' ? 'bg-slate-100 text-slate-600' :
+                             log.action === 'MANUAL_ADJUST' ? 'bg-purple-100 text-purple-700' :
                              'bg-amber-100 text-amber-700'
                           }`}>
-                             {log.action === 'CLOCK_IN' ? 'Started Shift' : 
-                              log.action === 'CLOCK_OUT' ? 'Ended Shift' : 
-                              log.action === 'START_BREAK' ? 'On Break' : 'Back to Work'}
+                             {log.action.replace('_', ' ')}
                           </span>
+                       </td>
+                       <td className="px-6 py-4 text-xs italic text-slate-400">{log.notes || '-'}</td>
+                       <td className="px-6 py-4 text-right">
+                          {editingLogId === log.id ? (
+                             <button onClick={() => handleSaveEdit(log)} className="text-emerald-600 hover:text-emerald-700 p-2"><Save size={16}/></button>
+                          ) : (
+                             <button onClick={() => handleStartEdit(log)} className="text-slate-400 hover:text-blue-600 p-2"><Edit3 size={16}/></button>
+                          )}
                        </td>
                      </tr>
                    ))}
-                   {filteredLogs.length === 0 && (
-                     <tr><td colSpan={4} className="p-8 text-center text-slate-400">No attendance logs found matching filters.</td></tr>
-                   )}
                  </tbody>
                </table>
              </div>
          </div>
+      )}
+
+      {/* Manual Entry Modal */}
+      {isManualModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-emerald-600 px-6 py-4 text-white flex justify-between items-center">
+              <h3 className="font-bold">Manual Log Override</h3>
+              <button onClick={() => setIsManualModalOpen(false)}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleManualLogSubmit} className="p-6 space-y-4">
+               <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Staff Member</label>
+                  <select required className="w-full p-2 border rounded-lg" value={manualLog.staffId} onChange={e => setManualLog({...manualLog, staffId: e.target.value})}>
+                    <option value="">Select Employee</option>
+                    {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+               </div>
+               <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Action</label>
+                  <select required className="w-full p-2 border rounded-lg" value={manualLog.action} onChange={e => setManualLog({...manualLog, action: e.target.value as any})}>
+                    <option value="CLOCK_IN">Clock In</option>
+                    <option value="CLOCK_OUT">Clock Out</option>
+                    <option value="START_BREAK">Start Break</option>
+                    <option value="END_BREAK">End Break</option>
+                    <option value="MANUAL_ADJUST">Manual Adjustment</option>
+                  </select>
+               </div>
+               <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Time & Date</label>
+                  <input type="datetime-local" required className="w-full p-2 border rounded-lg" value={manualLog.timestamp} onChange={e => setManualLog({...manualLog, timestamp: e.target.value})} />
+               </div>
+               <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Reason / Notes</label>
+                  <input type="text" placeholder="e.g. Forgot to clock in" className="w-full p-2 border rounded-lg" value={manualLog.notes} onChange={e => setManualLog({...manualLog, notes: e.target.value})} />
+               </div>
+               <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg shadow-lg">Save Adjustment</button>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Add Staff Modal */}

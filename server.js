@@ -1,8 +1,5 @@
 import express from 'express';
 import { Queue } from 'bullmq';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const app = express();
 
@@ -61,30 +58,6 @@ app.post('/send-email', async (req, res) => {
   } catch (error) {
     console.error('Error sending email:', error);
     res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-app.post('/verify-recaptcha', async (req, res) => {
-  const { token } = req.body;
-  const secretKey = process.env.RECAPTCHA_SECRET_KEY;
-
-  if (!token) {
-    return res.status(400).json({ success: false, message: 'Token is missing' });
-  }
-
-  try {
-    const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`;
-    const response = await fetch(verifyUrl, { method: 'POST' });
-    const data = await response.json();
-
-    if (data.success) {
-      res.json({ success: true, message: 'Captcha verified' });
-    } else {
-      res.status(400).json({ success: false, message: 'Captcha verification failed' });
-    }
-  } catch (error) {
-    console.error('Recaptcha Error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 

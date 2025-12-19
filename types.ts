@@ -63,10 +63,21 @@ export interface MaintenanceTicket {
 export interface Staff {
   id: string;
   name: string;
+  email?: string; // Added for Firebase Auth integration
   role: 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
   status: 'On Duty' | 'Off Duty' | 'Break';
   shift: string;
   pin: string; // Security PIN for login
+}
+
+export type AttendanceAction = 'CLOCK_IN' | 'CLOCK_OUT' | 'START_BREAK' | 'END_BREAK';
+
+export interface AttendanceLog {
+  id: string;
+  staffId: string;
+  staffName: string; // Denormalized for easier display
+  action: AttendanceAction;
+  timestamp: string; // ISO String
 }
 
 export interface Transaction {
@@ -79,11 +90,42 @@ export interface Transaction {
   guestId?: string; // Optional link to a specific guest
 }
 
-export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'settings';
+export interface StoredDocument {
+  id: string;
+  title: string;
+  category: 'Invoice' | 'Guest ID' | 'Contract' | 'Report' | 'Other';
+  date: string; // ISO Date String
+  fileData: string; // Base64 Encoded Data
+  fileType: string; // MIME Type (e.g., 'application/pdf')
+  size: number; // Bytes
+  description?: string;
+}
+
+export interface FeatureRequest {
+  id: string;
+  title: string;
+  description: string;
+  priority: 'Low' | 'Medium' | 'High';
+  status: 'Pending' | 'In Progress' | 'Completed' | 'Rejected';
+  submittedBy: string;
+  submittedDate: string;
+}
+
+export interface DNRRecord {
+  id: string;
+  name: string;
+  reason: string;
+  notes: string;
+  photo?: string; // Base64 encoded string
+  dateAdded: string;
+}
+
+export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings' | 'reports';
 
 export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 
 export interface CurrentUser {
+  id?: string; // Added to track specific staff ID
   name: string;
   role: UserRole;
   avatarInitials: string;
@@ -103,6 +145,7 @@ export interface FirebaseConfig {
 export interface AppSettings {
   dataSource: DataSource;
   demoMode: boolean;
+  maintenanceEmail?: string;
   firebaseConfig?: FirebaseConfig;
   // Legacy
   apiBaseUrl?: string;

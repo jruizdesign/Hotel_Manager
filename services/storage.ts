@@ -1,4 +1,4 @@
-import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings } from '../types';
+import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest, AttendanceLog, DNRRecord } from '../types';
 import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
 import { db } from './db';
 import { initializeFirebase, getFirebaseDB } from './firebase';
@@ -7,21 +7,21 @@ import { collection, getDocs, doc, writeBatch, Firestore } from 'firebase/firest
 const SETTINGS_ID = 'app_settings';
 
 // Check if environment variables are configured for Firebase
-const env = process.env as any;
-const hasEnvConfig = !!env.FIREBASE_API_KEY;
+// We access process.env directly so Vite's define plugin can perform static string replacement
+const hasEnvConfig = !!process.env.FIREBASE_API_KEY;
 
 const DEFAULT_SETTINGS: AppSettings = {
   dataSource: hasEnvConfig ? 'Cloud' : 'Local',
-  // If cloud config is present, we disable demo mode by default to prevent overwriting cloud data
-  // User will see Setup Wizard instead if DB is empty
+  // If cloud config is present, disable demo mode by default to prioritize real data
   demoMode: !hasEnvConfig, 
+  maintenanceEmail: 'maintenance@staysync.hotel',
   firebaseConfig: {
-    apiKey: env.FIREBASE_API_KEY || '',
-    authDomain: env.FIREBASE_AUTH_DOMAIN || '',
-    projectId: env.FIREBASE_PROJECT_ID || '',
-    storageBucket: env.FIREBASE_STORAGE_BUCKET || '',
-    messagingSenderId: env.FIREBASE_MESSAGING_SENDER_ID || '',
-    appId: env.FIREBASE_APP_ID || ''
+    apiKey: process.env.FIREBASE_API_KEY || '',
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || '',
+    projectId: process.env.FIREBASE_PROJECT_ID || '',
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || '',
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
+    appId: process.env.FIREBASE_APP_ID || ''
   }
 };
 
@@ -31,21 +31,29 @@ const getCloudData = async <T>(collectionName: string): Promise<T[]> => {
   const firestore = getFirebaseDB();
   if (!firestore) throw new Error("Cloud database not connected");
   
-  const querySnapshot = await getDocs(collection(firestore, collectionName));
-  const data: T[] = [];
-  querySnapshot.forEach((doc) => {
-    // We assume the doc ID is part of the data object as 'id'
-    data.push(doc.data() as T);
-  });
-  return data;
+  try {
+    const querySnapshot = await getDocs(collection(firestore, collectionName));
+    const data: T[] = [];
+    querySnapshot.forEach((doc) => {
+      // We assume the doc ID is part of the data object as 'id'
+      data.push(doc.data() as T);
+    });
+    return data;
+  } catch (err: any) {
+    if (err.code === 'permission-denied') {
+      console.warn(`Permission denied accessing ${collectionName}. Check Firestore rules.`);
+    } else {
+      console.error(`Error fetching ${collectionName}:`, err);
+    }
+    return [];
+  }
 };
 
 const saveCloudData = async <T extends { id: string }>(collectionName: string, data: T[]): Promise<void> => {
   const firestore = getFirebaseDB();
   if (!firestore) throw new Error("Cloud database not connected");
 
-  // Firestore Batch allows up to 500 operations. For a small hotel app, this is okay.
-  // For larger scale, we would need to chunk this.
+  // Firestore Batch allows up to 500 operations.
   const batch = writeBatch(firestore);
   
   data.forEach((item) => {
@@ -70,7 +78,6 @@ export const StorageService = {
       if (record) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, ...settings } = record;
-        // Initialize firebase if config exists
         const appSettings = settings as AppSettings;
         if (appSettings.dataSource === 'Cloud' && appSettings.firebaseConfig) {
           initializeFirebase(appSettings);
@@ -78,7 +85,7 @@ export const StorageService = {
         return appSettings;
       }
       
-      // If no local settings, use defaults (which might include Env Var config)
+      // If no local settings, use defaults
       if (DEFAULT_SETTINGS.dataSource === 'Cloud' && DEFAULT_SETTINGS.firebaseConfig) {
         initializeFirebase(DEFAULT_SETTINGS);
       }
@@ -115,16 +122,23 @@ export const StorageService = {
     if (settings.dataSource === 'Cloud') {
       try {
         const cloudData = await getCloudData<T>(collectionName);
-        if (cloudData.length === 0 && settings.demoMode) {
-           // Seed Cloud with Mock Data if empty
-           await saveCloudData(collectionName, mockData);
-           return mockData;
+        
+        // Strict Rule: Never auto-seed STAFF or Guests in Cloud Mode to avoid polluting real DB with mocks.
+        // User must manually create their first admin.
+        if (collectionName === 'staff' || collectionName === 'guests') {
+          return cloudData;
         }
+
+        // For other collections (Rooms, etc.), we only seed if explicitly requested via Demo Mode toggle (handled in Settings)
+        // or if we really want a baseline. For now, we return empty if Cloud is empty.
+        // This effectively "Replaces mock data with real data" (or lack thereof).
         return cloudData;
+
       } catch (error) {
         console.error(`Cloud fetch failed for ${collectionName}:`, error);
-        // If config implies cloud but it fails, we might be offline or config is bad.
-        // For now, we alert. In a real app, we might fallback to local cache.
+        // Fallback to local if cloud fails? 
+        // For security, if cloud fails, we probably shouldn't show local data unless synced.
+        return []; 
       }
     }
 
@@ -132,7 +146,7 @@ export const StorageService = {
     const count = await localTable.count();
     
     // If DB is empty and Demo Mode is ON, seed it
-    if (count === 0 && settings.demoMode) {
+    if (count === 0 && settings.demoMode && mockData.length > 0) {
       console.log(`Seeding ${localTable.name} with mock data...`);
       await localTable.bulkAdd(mockData);
       return mockData;
@@ -157,8 +171,6 @@ export const StorageService = {
         await saveCloudData(collectionName, data);
       } catch (error) {
         console.error(`Failed to save to cloud`, error);
-        // Note: For a robust app, we'd queue this for retry.
-        console.warn("Warning: Saved locally, but Cloud sync failed.");
       }
     }
   },
@@ -200,11 +212,39 @@ export const StorageService = {
     return StorageService.saveData(db.staff, staff, 'staff');
   },
 
+  getAttendanceLogs: async (): Promise<AttendanceLog[]> => {
+    return StorageService.getOrSeedData(db.attendance, [], 'attendance');
+  },
+  saveAttendanceLogs: async (logs: AttendanceLog[]) => {
+    return StorageService.saveData(db.attendance, logs, 'attendance');
+  },
+
   getTransactions: async (): Promise<Transaction[]> => {
     return StorageService.getOrSeedData(db.transactions, MOCK_TRANSACTIONS, 'transactions');
   },
   saveTransactions: async (transactions: Transaction[]) => {
     return StorageService.saveData(db.transactions, transactions, 'transactions');
+  },
+
+  getDocuments: async (): Promise<StoredDocument[]> => {
+    return StorageService.getOrSeedData(db.documents, [], 'documents');
+  },
+  saveDocuments: async (documents: StoredDocument[]) => {
+    return StorageService.saveData(db.documents, documents, 'documents');
+  },
+  
+  getFeatureRequests: async (): Promise<FeatureRequest[]> => {
+    return StorageService.getOrSeedData(db.features, [], 'features');
+  },
+  saveFeatureRequests: async (features: FeatureRequest[]) => {
+    return StorageService.saveData(db.features, features, 'features');
+  },
+
+  getDNRRecords: async (): Promise<DNRRecord[]> => {
+    return StorageService.getOrSeedData(db.dnr, [], 'dnr');
+  },
+  saveDNRRecords: async (records: DNRRecord[]) => {
+    return StorageService.saveData(db.dnr, records, 'dnr');
   },
 
   // --- Utility Methods ---
@@ -215,8 +255,12 @@ export const StorageService = {
       db.guests.clear(),
       db.maintenance.clear(),
       db.staff.clear(),
+      db.attendance.clear(),
       db.transactions.clear(),
-      db.history.clear()
+      db.history.clear(),
+      db.documents.clear(),
+      db.features.clear(),
+      db.dnr.clear()
     ]);
   },
 
@@ -225,25 +269,33 @@ export const StorageService = {
   },
 
   exportAllData: async () => {
-    const [rooms, guests, maintenance, staff, transactions, history] = await Promise.all([
+    const [rooms, guests, maintenance, staff, attendance, transactions, history, documents, features, dnr] = await Promise.all([
       db.rooms.toArray(),
       db.guests.toArray(),
       db.maintenance.toArray(),
       db.staff.toArray(),
+      db.attendance.toArray(),
       db.transactions.toArray(),
-      db.history.toArray()
+      db.history.toArray(),
+      db.documents.toArray(),
+      db.features.toArray(),
+      db.dnr.toArray()
     ]);
 
     return {
-      version: '1.0',
+      version: '4.0',
       timestamp: new Date().toISOString(),
       data: {
         staysync_rooms: rooms,
         staysync_guests: guests,
         staysync_maintenance: maintenance,
         staysync_staff: staff,
+        staysync_attendance: attendance,
         staysync_transactions: transactions,
-        staysync_history: history
+        staysync_history: history,
+        staysync_documents: documents,
+        staysync_features: features,
+        staysync_dnr: dnr
       }
     };
   },
@@ -255,7 +307,7 @@ export const StorageService = {
     
     const data = backupData.data;
     
-    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.transactions, db.history, async () => {
+    await (db as any).transaction('rw', db.rooms, db.guests, db.maintenance, db.staff, db.attendance, db.transactions, db.history, db.documents, db.features, db.dnr, async () => {
       await db.rooms.clear();
       if (data.staysync_rooms) await db.rooms.bulkAdd(data.staysync_rooms);
       
@@ -267,12 +319,24 @@ export const StorageService = {
       
       await db.staff.clear();
       if (data.staysync_staff) await db.staff.bulkAdd(data.staysync_staff);
+
+      await db.attendance.clear();
+      if (data.staysync_attendance) await db.attendance.bulkAdd(data.staysync_attendance);
       
       await db.transactions.clear();
       if (data.staysync_transactions) await db.transactions.bulkAdd(data.staysync_transactions);
 
       await db.history.clear();
       if (data.staysync_history) await db.history.bulkAdd(data.staysync_history);
+
+      await db.documents.clear();
+      if (data.staysync_documents) await db.documents.bulkAdd(data.staysync_documents);
+      
+      await db.features.clear();
+      if (data.staysync_features) await db.features.bulkAdd(data.staysync_features);
+
+      await db.dnr.clear();
+      if (data.staysync_dnr) await db.dnr.bulkAdd(data.staysync_dnr);
     });
   },
 

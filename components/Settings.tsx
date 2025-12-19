@@ -1,8 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
 import { db } from '../services/db';
+import { changeUserPassword, getAuthInstance } from '../services/firebase';
 import { AppSettings, UserRole, FirebaseConfig } from '../types';
-import { RefreshCw, Database, Download, Upload, HardDrive, FileJson, Cloud, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight, Terminal, Table as TableIcon, Flame } from 'lucide-react';
+import { RefreshCw, Database, Download, Upload, HardDrive, FileJson, Cloud, CheckCircle2, XCircle, Globe, Key, ToggleLeft, ToggleRight, Terminal, Table as TableIcon, Mail, ShieldCheck, Lock, AlertTriangle } from 'lucide-react';
 
 interface SettingsProps {
   onDataReset: () => void;
@@ -14,6 +15,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
   const [settings, setSettings] = useState<AppSettings>({
     dataSource: 'Local',
     demoMode: true,
+    maintenanceEmail: '',
     firebaseConfig: {
       apiKey: '',
       authDomain: '',
@@ -25,6 +27,13 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [dbStats, setDbStats] = useState<Record<string, number>>({});
+  
+  // Password Change State
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passError, setPassError] = useState<string | null>(null);
+  const [passSuccess, setPassSuccess] = useState<string | null>(null);
+  const [isPassLoading, setIsPassLoading] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -143,9 +152,42 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
     
     setTimeout(() => {
       setIsSaving(false);
-      onDataReset();
-      alert("Configuration Saved! You may need to refresh the page for cloud connection to activate.");
+      alert("Configuration Saved! The system will now reload to apply connection changes.");
+      window.location.reload();
     }, 800);
+  };
+  
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassError(null);
+    setPassSuccess(null);
+    setIsPassLoading(true);
+
+    if (newPassword !== confirmPassword) {
+        setPassError("Passwords do not match.");
+        setIsPassLoading(false);
+        return;
+    }
+    
+    if (newPassword.length < 6) {
+        setPassError("Password must be at least 6 characters.");
+        setIsPassLoading(false);
+        return;
+    }
+
+    try {
+        await changeUserPassword(newPassword);
+        setPassSuccess("Admin password updated successfully.");
+        setNewPassword('');
+        setConfirmPassword('');
+    } catch (err: any) {
+        if (err.code === 'auth/requires-recent-login') {
+            setPassError("For security, you must log out and log back in before changing your password.");
+        } else {
+            setPassError(err.message || "Failed to update password.");
+        }
+    }
+    setIsPassLoading(false);
   };
 
   const updateFirebaseConfig = (key: keyof FirebaseConfig, value: string) => {
@@ -158,6 +200,9 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
     }));
   };
 
+  const authInstance = getAuthInstance();
+  const isCloudUser = !!authInstance?.currentUser;
+
   return (
     <div className="space-y-8 max-w-4xl pb-10">
       <div>
@@ -166,6 +211,86 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
         </h2>
         <p className="text-slate-500 mt-1">Manage application data, backups, and connections.</p>
       </div>
+      
+      {/* Account Security Section */}
+      {userRole === 'Superuser' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-6 border-b border-slate-200 bg-purple-50/50">
+               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                 <ShieldCheck size={20} className="text-purple-600" /> Account Security
+               </h3>
+               <p className="text-sm text-slate-500 mt-1">Manage credentials for the terminal administrator.</p>
+            </div>
+            
+            <div className="p-6">
+                {!isCloudUser ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
+                        <AlertTriangle className="text-amber-600 shrink-0" size={24} />
+                        <div>
+                            <h4 className="font-bold text-amber-800">Using Default Offline Account</h4>
+                            <p className="text-sm text-amber-700 mt-1">
+                                You are currently logged in with the default <code className="bg-amber-100 px-1 rounded">admin@hotel.com</code> credential.
+                                To change your password and secure this terminal, please configure <strong>Cloud Sync (Firebase)</strong> below.
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="max-w-md">
+                        <form onSubmit={handleChangePassword} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">New Password</label>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input 
+                                        type="password" 
+                                        required
+                                        placeholder="Min 6 characters"
+                                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-purple-500 outline-none"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Confirm Password</label>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input 
+                                        type="password" 
+                                        required
+                                        placeholder="Repeat new password"
+                                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-purple-500 outline-none"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            {passError && (
+                                <p className="text-xs text-red-600 flex items-center gap-1">
+                                    <XCircle size={12} /> {passError}
+                                </p>
+                            )}
+                            
+                            {passSuccess && (
+                                <p className="text-xs text-emerald-600 flex items-center gap-1">
+                                    <CheckCircle2 size={12} /> {passSuccess}
+                                </p>
+                            )}
+
+                            <button 
+                                type="submit" 
+                                disabled={isPassLoading || !newPassword}
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-50 text-sm flex items-center gap-2"
+                            >
+                                {isPassLoading ? <RefreshCw className="animate-spin" size={16} /> : <Key size={16} />} Update Password
+                            </button>
+                        </form>
+                    </div>
+                )}
+            </div>
+        </div>
+      )}
 
       {/* Database Status Panel */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -189,12 +314,49 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
                 <div key={table} className="bg-slate-50 border border-slate-100 p-3 rounded-lg flex flex-col items-center justify-center">
                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{table}</span>
                    <span className="text-2xl font-bold text-slate-700">{count}</span>
-                   <span className="text-[10px] text-slate-400">records</span>
+                   <span className="text-xs text-slate-400">records</span>
                 </div>
               ))}
            </div>
         </div>
       </div>
+
+      {/* Notification Settings */}
+      {(userRole === 'Superuser' || userRole === 'Manager') && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-6 border-b border-slate-200 bg-blue-50/50">
+             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+               <Mail size={20} className="text-blue-600" /> Notifications
+             </h3>
+             <p className="text-sm text-slate-500 mt-1">Configure email alerts for maintenance and system events.</p>
+          </div>
+          <div className="p-6">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Maintenance Alert Email</label>
+                <input 
+                  type="email" 
+                  className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="maintenance@staysync.hotel"
+                  value={settings.maintenanceEmail || ''}
+                  onChange={(e) => setSettings({...settings, maintenanceEmail: e.target.value})}
+                />
+                <p className="text-xs text-slate-400 mt-1">Requests and resolutions will be sent to this address.</p>
+              </div>
+            </div>
+            <div className="flex justify-end pt-4">
+              <button 
+                onClick={handleSaveSettings}
+                disabled={isSaving}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-70 flex items-center gap-2"
+              >
+                {isSaving ? <RefreshCw className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
+                Save Email Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cloud Configuration Section */}
       {userRole === 'Superuser' && (
@@ -314,7 +476,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
                 className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors disabled:opacity-70 flex items-center gap-2"
               >
                 {isSaving ? <RefreshCw className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
-                Save Configuration
+                Save Cloud Config
               </button>
             </div>
           </div>

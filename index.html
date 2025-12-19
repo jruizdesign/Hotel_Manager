@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- CSP to allow unsafe-eval required for dev tools/libraries -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:;">
     <title>StaySync</title>
     <link rel="manifest" href="/manifest.json" />
     <!-- We keep Tailwind CDN for simplicity to avoid needing postcss config -->
@@ -58,7 +60,11 @@
     "url": "https://esm.sh/url@^0.11.4",
     "electron": "https://esm.sh/electron@^39.2.6",
     "dexie": "https://esm.sh/dexie@^4.2.1",
-    "firebase/": "https://esm.sh/firebase@^12.6.0/"
+    "firebase/": "https://esm.sh/firebase@^12.6.0/",
+    "dotenv": "https://esm.sh/dotenv@^17.2.3",
+    "nodemailer": "https://esm.sh/nodemailer@^7.0.11",
+    "bullmq": "https://esm.sh/bullmq@^5.66.0",
+    "express": "https://esm.sh/express@^5.2.1"
   }
 }
 </script>

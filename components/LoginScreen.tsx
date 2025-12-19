@@ -346,7 +346,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Personal PIN</label>
                         <input
                           type="password" inputMode="numeric" required maxLength={4} pattern="\d{4}" placeholder="••••"
-                          value={regData.pin} onChange={(e) => setRegData({...regData, pin: e.target.value.replace(/\D/g, ''))})}
+                          value={regData.pin} onChange={(e) => setRegData({...regData, pin: e.target.value.replace(/\D/g, '')})}
                           className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3 px-5 text-white outline-none font-mono tracking-widest text-center transition-all"
                         />
                       </div>

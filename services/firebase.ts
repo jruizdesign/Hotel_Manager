@@ -43,7 +43,8 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
     // Initialize App Check if configured
     if (settings.recaptchaSiteKey) {
         // Enable debug token in development environment if needed
-        if (import.meta.env.DEV) {
+        // Cast import.meta to any to avoid TS error about 'env' property
+        if ((import.meta as any).env?.DEV) {
             (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
         }
 

@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "staysyncfb"
+  },
+  "targets": {},
+  "etags": {
+    "staysyncfb": {
+      "extensionInstances": {
+        "firestore-send-email": "5fe68c8d041c07ba96fa7769fefdf0d19d08916ae285d9814182b09633b92205"
+      }
+    }
   }
 }

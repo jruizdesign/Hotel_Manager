@@ -1,0 +1,15 @@
+{
+  "name": "image-processing-function",
+  "version": "1.0.0",
+  "description": "A Cloud Function to classify and organize uploaded images.",
+  "main": "index.js",
+  "dependencies": {
+    "@google-cloud/vision": "^5.3.4",
+    "firebase-admin": "^11.0.1",
+    "firebase-functions": "^4.0.1"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "private": true
+}

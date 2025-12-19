@@ -4,5 +4,8 @@
   },
   "extensions": {
     "firestore-send-email": "firebase/firestore-send-email@0.2.4"
+  },
+  "functions": {
+    "source": "functions"
   }
 }

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.32.0",
+    "@vercel/analytics": "^1.6.1",
     "bullmq": "^5.4.0",
     "dexie": "^4.0.1",
     "dotenv": "^16.4.5",

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -119,10 +118,26 @@ const App: React.FC = () => {
 
   const handleCreateAdmin = async (name: string, pin: string) => {
     const newAdmin: Staff = { id: Date.now().toString(), name, role: 'Superuser', status: 'Off Duty', shift: 'Any', pin };
-    const updatedStaff = [newAdmin];
+    const updatedStaff = [newAdmin, ...staff];
     setStaff(updatedStaff);
     await StorageService.saveStaff(updatedStaff);
     handleLogin({ id: newAdmin.id, name: newAdmin.name, role: 'Superuser', avatarInitials: newAdmin.name.substring(0, 2).toUpperCase() });
+  };
+
+  const handleRegisterStaff = async (staffData: Omit<Staff, 'id' | 'status'>) => {
+    const newStaff: Staff = { 
+      ...staffData, 
+      id: Date.now().toString(), 
+      status: 'Off Duty' 
+    };
+    const updatedStaff = [...staff, newStaff];
+    setStaff(updatedStaff);
+    await StorageService.saveStaff(updatedStaff);
+    setToast({ 
+      message: 'Account Activated', 
+      subtext: `Account for ${staffData.name} is ready for login.`,
+      type: 'success' 
+    });
   };
 
   const handleUpdateAttendanceLog = async (updatedLog: AttendanceLog) => {
@@ -364,7 +379,7 @@ const App: React.FC = () => {
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-emerald-500"><Loader2 className="animate-spin" /></div>;
   if (!terminalUser) return <TerminalAuth />;
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-emerald-600" /></div>;
-  if (!currentUser) return <LoginScreen staff={staff} onLogin={handleLogin} onCreateAdmin={handleCreateAdmin} />;
+  if (!currentUser) return <LoginScreen staff={staff} onLogin={handleLogin} onCreateAdmin={handleCreateAdmin} onRegisterStaff={handleRegisterStaff} />;
 
   return (
     <div className="flex min-h-screen bg-slate-50 relative">

@@ -17,24 +17,27 @@ import {
   Fingerprint,
   Info,
   CheckCircle2,
-  Building2
+  Building2,
+  UserPlus,
+  UserCheck
 } from 'lucide-react';
-import { loginTerminal, logoutTerminal } from '../services/firebase';
+import { loginTerminal } from '../services/firebase';
 
 interface LoginScreenProps {
   staff: Staff[];
   onLogin: (user: CurrentUser) => void;
   onCreateAdmin: (name: string, pin: string) => void;
+  onRegisterStaff: (staffData: Omit<Staff, 'id' | 'status'>) => void;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin, onRegisterStaff }) => {
   // Navigation & UI States
-  const [authMethod, setAuthMethod] = useState<'pin' | 'email'>('pin');
+  const [authMethod, setAuthMethod] = useState<'pin' | 'email' | 'register'>('pin');
   const [selectedUser, setSelectedUser] = useState<Staff | null>(null);
   const [showRecovery, setShowRecovery] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Core Login States (As requested)
+  // Core Login States
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' | 'info' } | null>(null);
@@ -46,9 +49,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
   const [newAdminName, setNewAdminName] = useState('');
   const [newAdminPin, setNewAdminPin] = useState('');
 
+  // Staff Registration State
+  const [regStep, setRegStep] = useState(1);
+  const [regData, setRegData] = useState({
+    name: '',
+    role: 'Reception' as Staff['role'],
+    pin: '',
+    email: ''
+  });
+  const [approvingManager, setApprovingManager] = useState<Staff | null>(null);
+  const [managerPin, setManagerPin] = useState('');
+
   // Staff Grouping
   const superusers = staff.filter(s => s.role === 'Superuser');
-  const managers = staff.filter(s => s.role === 'Manager');
+  const managers = staff.filter(s => s.role === 'Manager' || s.role === 'Superuser');
   const employees = staff.filter(s => s.role !== 'Manager' && s.role !== 'Superuser');
 
   const handleUserSelect = (user: Staff) => {
@@ -130,6 +144,40 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
     }
   };
 
+  const handleStartRegistration = () => {
+    setAuthMethod('register');
+    setRegStep(1);
+    setRegData({ name: '', role: 'Reception', pin: '', email: '' });
+    setMessage(null);
+  };
+
+  const handleRegDataSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (regData.name && regData.pin.length === 4) {
+      setRegStep(2);
+    }
+  };
+
+  const handleApprovalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!approvingManager) return;
+
+    if (managerPin === approvingManager.pin) {
+      onRegisterStaff({
+        name: regData.name,
+        email: regData.email,
+        role: regData.role,
+        shift: 'TBD',
+        pin: regData.pin
+      });
+      setMessage({ text: 'Staff account created successfully!', type: 'success' });
+      setAuthMethod('pin');
+    } else {
+      setMessage({ text: 'Approval Denied: Incorrect Manager PIN.', type: 'error' });
+      setManagerPin('');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans selection:bg-emerald-500/30">
       
@@ -154,8 +202,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
       <div className="w-full max-w-md relative z-20">
         <div className="bg-slate-900/40 backdrop-blur-2xl border border-white/10 p-8 rounded-[2.5rem] shadow-2xl overflow-hidden relative">
           
-          {/* ReCaptcha Info Icon */}
-          <div className="absolute top-4 right-4 text-slate-600 hover:text-emerald-400 transition-colors cursor-help" title="Protected by Firebase App Check & ReCaptcha">
+          {/* Status Icons */}
+          <div className="absolute top-4 right-4 text-slate-600 hover:text-emerald-400 transition-colors cursor-help">
             <ShieldCheck size={18} />
           </div>
 
@@ -194,7 +242,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
               </form>
             </div>
           ) : (
-            /* SCENARIO: STANDARD LOGIN */
+            /* SCENARIO: STANDARD LOGIN / REGISTER */
             <>
               {authMethod === 'email' ? (
                  /* CLOUD EMAIL LOGIN */
@@ -254,6 +302,114 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
                         </button>
                     </div>
                  </form>
+              ) : authMethod === 'register' ? (
+                /* STAFF REGISTRATION WORKFLOW */
+                <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
+                  <div className="text-center">
+                    <button 
+                      type="button"
+                      onClick={() => { setAuthMethod('pin'); setRegStep(1); }}
+                      className="text-slate-500 text-xs hover:text-white mb-6 flex items-center justify-center gap-2 mx-auto transition-colors"
+                    >
+                      <ArrowLeft size={14} /> Cancel Request
+                    </button>
+                    <h2 className="text-2xl font-bold text-white tracking-tight">
+                      {regStep === 1 ? 'New Staff Request' : 'Manager Approval'}
+                    </h2>
+                    <p className="text-slate-500 text-sm mt-1">
+                      {regStep === 1 ? 'Enter your details to join' : 'Requires verification to activate'}
+                    </p>
+                  </div>
+
+                  {regStep === 1 ? (
+                    <form onSubmit={handleRegDataSubmit} className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Full Name</label>
+                        <input
+                          type="text" required placeholder="John Doe"
+                          value={regData.name} onChange={(e) => setRegData({...regData, name: e.target.value})}
+                          className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3 px-5 text-white outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Assigned Role</label>
+                        <select
+                          value={regData.role} onChange={(e) => setRegData({...regData, role: e.target.value as any})}
+                          className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3 px-5 text-white outline-none transition-all appearance-none"
+                        >
+                          <option value="Reception">Reception</option>
+                          <option value="Housekeeping">Housekeeping</option>
+                          <option value="Maintenance">Maintenance</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Personal PIN</label>
+                        <input
+                          type="password" inputMode="numeric" required maxLength={4} pattern="\d{4}" placeholder="••••"
+                          value={regData.pin} onChange={(e) => setRegData({...regData, pin: e.target.value.replace(/\D/g, ''))})}
+                          className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3 px-5 text-white outline-none font-mono tracking-widest text-center transition-all"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={!regData.name || regData.pin.length < 4}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl transition-all shadow-lg mt-4 flex items-center justify-center gap-2"
+                      >
+                        Request Approval <ChevronRight size={18} />
+                      </button>
+                    </form>
+                  ) : (
+                    /* MANAGER APPROVAL STEP */
+                    <form onSubmit={handleApprovalSubmit} className="space-y-6">
+                      <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                        {managers.map(manager => (
+                          <button
+                            key={manager.id}
+                            type="button"
+                            onClick={() => { setApprovingManager(manager); setManagerPin(''); setMessage(null); }}
+                            className={`w-full flex items-center justify-between p-3 rounded-2xl border transition-all ${
+                              approvingManager?.id === manager.id 
+                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' 
+                                : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
+                            }`}
+                          >
+                            <span className="font-bold">{manager.name}</span>
+                            <span className="text-[10px] uppercase font-medium">{manager.role}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {approvingManager && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                           <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                                {approvingManager.name.split(' ')[0]}'s Approval PIN
+                              </label>
+                              <input
+                                type="password" inputMode="numeric" required maxLength={4} value={managerPin} autoFocus
+                                onChange={(e) => setManagerPin(e.target.value.replace(/\D/g, ''))}
+                                className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-2xl py-4 text-white outline-none text-center font-mono text-2xl tracking-[1em]"
+                              />
+                           </div>
+                           
+                           {message && (
+                             <p className="text-center text-red-400 text-xs flex items-center justify-center gap-1">
+                               <AlertCircle size={14} /> {message.text}
+                             </p>
+                           )}
+
+                           <button
+                             type="submit"
+                             disabled={managerPin.length < 4}
+                             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2"
+                           >
+                             <UserCheck size={20} /> Authorize Account
+                           </button>
+                        </div>
+                      )}
+                    </form>
+                  )}
+                </div>
               ) : !selectedUser ? (
                 /* PROFILE SELECTOR (TERMINAL MODE) */
                 <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-500">
@@ -294,7 +450,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
                     <div className="mt-4">
                       <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1">Hotel Staff</p>
                       <div className="grid grid-cols-1 gap-2">
-                        {[...managers, ...employees].map(user => (
+                        {[...managers.filter(m => m.role !== 'Superuser'), ...employees].map(user => (
                           <button
                             key={user.id}
                             onClick={() => handleUserSelect(user)}
@@ -318,12 +474,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
                   
                   {/* Footer Access Actions */}
                   <div className="pt-6 border-t border-white/5 text-center space-y-4">
-                     <button 
-                       onClick={() => { setAuthMethod('email'); setMessage(null); }}
-                       className="w-full text-xs text-slate-400 hover:text-white hover:bg-white/5 py-3 rounded-2xl transition-all flex items-center justify-center gap-2 border border-transparent hover:border-white/10"
-                     >
-                       <Mail size={16} className="text-emerald-400" /> Admin Cloud Portal
-                     </button>
+                     <div className="grid grid-cols-2 gap-3">
+                        <button 
+                          onClick={() => { setAuthMethod('email'); setMessage(null); }}
+                          className="text-[10px] text-slate-400 hover:text-white hover:bg-white/5 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border border-white/5"
+                        >
+                          <Mail size={14} className="text-emerald-400" /> Cloud Admin
+                        </button>
+                        <button 
+                          onClick={handleStartRegistration}
+                          className="text-[10px] text-slate-400 hover:text-white hover:bg-white/5 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border border-white/5"
+                        >
+                          <UserPlus size={14} className="text-blue-400" /> New Staff
+                        </button>
+                     </div>
 
                      <button 
                        onClick={() => setShowRecovery(!showRecovery)}

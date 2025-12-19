@@ -70,6 +70,11 @@ export const StorageService = {
   // --- Settings Management ---
   getSettings: async (): Promise<AppSettings> => {
     try {
+      const stored = localStorage.getItem(STORAGE_KEYS.ROOMS);
+      return stored ? JSON.parse(stored) : MOCK_ROOMS;
+      console.error('Failed to load rooms from localStorage:', e);
+      console.error('Failed to load rooms', e);
+      return MOCK_ROOMS;
       const record = await db.settings.get(SETTINGS_ID);
       if (record) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -95,6 +100,14 @@ export const StorageService = {
     return DEFAULT_SETTINGS;
   },
 
+  // Guests
+  getGuests: (): Guest[] => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.GUESTS);
+    } catch (e) {
+      console.error('Failed to load guests', e);
+    } catch (e) {
+      return MOCK_GUESTS;
   saveSettings: async (settings: AppSettings) => {
     await db.settings.put({ ...settings, id: SETTINGS_ID });
     if (settings.dataSource === 'Cloud' && settings.firebaseConfig) {

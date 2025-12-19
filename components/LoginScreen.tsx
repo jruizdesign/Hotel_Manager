@@ -241,7 +241,26 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
                        <div className="flex justify-center">
                           <ReCaptcha 
                             sitekey="6LeCfDAsAAAAAInjL2In0SF5ihzPpktrqXLpo59_" 
-                            callback={(token: string) => console.log("Captcha Token:", token)} 
+                            callback={async (token: string) => {
+                              try {
+                                const response = await fetch('http://localhost:3000/verify-recaptcha', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ token })
+                                });
+                                const result = await response.json();
+                                if (result.success) {
+                                  console.log("Captcha verified successfully");
+                                  // Optionally set a state here to enable the login button
+                                } else {
+                                  console.error("Captcha verification failed");
+                                  setMessage({ text: "Captcha verification failed", type: 'error' });
+                                }
+                              } catch (error) {
+                                console.error("Error verifying captcha:", error);
+                                setMessage({ text: "Error verifying captcha", type: 'error' });
+                              }
+                            }} 
                           />
                        </div>
 

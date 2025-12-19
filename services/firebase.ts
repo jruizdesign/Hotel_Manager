@@ -11,6 +11,7 @@ import {
   User
 } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { AppSettings } from "../types";
 
 let dbInstance: Firestore | null = null;
@@ -39,8 +40,18 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
   try {
     appInstance = initializeApp(settings.firebaseConfig);
 
-    // Initialize App Check if configured (Optional)
-    // Code for App Check would go here using modular SDK if required.
+    // Initialize App Check if configured
+    if (settings.recaptchaSiteKey) {
+        // Enable debug token in development environment if needed
+        if (import.meta.env.DEV) {
+            (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+        }
+
+        initializeAppCheck(appInstance, {
+            provider: new ReCaptchaV3Provider(settings.recaptchaSiteKey),
+            isTokenAutoRefreshEnabled: true
+        });
+    }
 
     dbInstance = getFirestore(appInstance);
     authInstance = getAuth(appInstance);

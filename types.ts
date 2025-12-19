@@ -146,6 +146,7 @@ export interface AppSettings {
   dataSource: DataSource;
   demoMode: boolean;
   maintenanceEmail?: string;
+  recaptchaSiteKey?: string; // Added for App Check
   firebaseConfig?: FirebaseConfig;
   // Legacy
   apiBaseUrl?: string;

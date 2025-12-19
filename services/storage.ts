@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   // If cloud config is present, disable demo mode by default to prioritize real data
   demoMode: !hasEnvConfig, 
   maintenanceEmail: 'maintenance@staysync.hotel',
+  recaptchaSiteKey: '',
   firebaseConfig: {
     apiKey: process.env.FIREBASE_API_KEY || '',
     authDomain: process.env.FIREBASE_AUTH_DOMAIN || '',

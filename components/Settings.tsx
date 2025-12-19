@@ -16,6 +16,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
     dataSource: 'Local',
     demoMode: true,
     maintenanceEmail: '',
+    recaptchaSiteKey: '',
     firebaseConfig: {
       apiKey: '',
       authDomain: '',
@@ -464,6 +465,24 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
                       value={settings.firebaseConfig?.appId}
                       onChange={(e) => updateFirebaseConfig('appId', e.target.value)}
                     />
+                  </div>
+                  
+                  {/* App Check Configuration */}
+                  <div className="space-y-1 md:col-span-2 pt-2 border-t border-slate-100">
+                    <div className="flex items-center gap-2 mb-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">ReCaptcha Site Key (App Check)</label>
+                        <span className="bg-slate-100 text-[10px] px-1.5 py-0.5 rounded text-slate-500 border border-slate-200">Optional</span>
+                    </div>
+                    <input 
+                      type="text" 
+                      placeholder="Enter site key to enable App Check"
+                      className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-orange-500 outline-none font-mono text-sm"
+                      value={settings.recaptchaSiteKey || ''}
+                      onChange={(e) => setSettings({...settings, recaptchaSiteKey: e.target.value})}
+                    />
+                    <p className="text-[10px] text-slate-400">
+                        Enable App Check in Firebase Console and register your site key (ReCaptcha V3) to secure backend resources.
+                    </p>
                   </div>
                 </div>
               </div>

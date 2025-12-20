@@ -1,5 +1,5 @@
 import express from 'express';
-import { Queue } from 'bullmq';
+// import { Queue } from 'bullmq';
 
 const app = express();
 
@@ -13,7 +13,7 @@ app.use((req, res, next) => {
 app.use(express.json());
 
 // Initialize the queue with the Redis connection settings
-const emailQueue = new Queue('email-queue', { connection: { host: '127.0.0.1', port: 6379 } });
+// const emailQueue = new Queue('email-queue', { connection: { host: '127.0.0.1', port: 6379 } });
 
 app.post('/register', async (req, res) => {
   try {
@@ -26,11 +26,12 @@ app.post('/register', async (req, res) => {
     // 1. Save user to DB (omitted for brevity)
 
     // 2. Add email job to queue
-    await emailQueue.add('welcome-email', {
+    /* await emailQueue.add('welcome-email', {
       to: email,
       subject: 'Welcome to StaySync!',
       body: 'Thanks for joining us. Your account has been created.'
-    });
+    }); */
+    console.log('Registration endpoint hit, email queue is disabled.');
 
     res.status(200).json({ message: 'User registered, email on the way!' });
   } catch (error) {
@@ -48,11 +49,12 @@ app.post('/send-email', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: to, subject, body' });
     }
 
-    await emailQueue.add('system-alert', {
+    /* await emailQueue.add('system-alert', {
       to,
       subject,
       body
-    });
+    }); */
+    console.log('Send-email endpoint hit, email queue is disabled.');
 
     res.status(200).json({ message: 'Email queued successfully' });
   } catch (error) {

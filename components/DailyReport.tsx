@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Guest, Room, Transaction } from '../types';
-import { CalendarDays, DollarSign, Wallet, ArrowRightCircle, Printer } from 'lucide-react';
+import { CalendarDays, DollarSign, Wallet, TrendingUp, Printer } from 'lucide-react';
 
 interface DailyReportProps {
   guests: Guest[];
@@ -8,12 +8,20 @@ interface DailyReportProps {
   transactions: Transaction[];
 }
 
+// Helper to calculate the number of nights between two dates
+const calculateNights = (checkIn: string, checkOut: string): number => {
+  const startDate = new Date(checkIn);
+  const endDate = new Date(checkOut);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return 0;
+  const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : 1; // Minimum 1 night
+};
+
 const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }) => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   const reportData = useMemo(() => {
-    // 1. Identify guests relevant to this date
-    // Relevant if: (CheckIn <= Date <= CheckOut) OR (Transaction on Date)
     const activeGuests = guests.filter(g => {
       const isStayActive = g.checkIn <= selectedDate && g.checkOut >= selectedDate;
       const hasPaymentToday = transactions.some(t => t.guestId === g.id && t.date === selectedDate);
@@ -21,25 +29,23 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
     });
 
     const rows = activeGuests.map(guest => {
-      // Find Room
       const room = rooms.find(r => r.number === guest.roomNumber);
-      
-      // Calculate Rate (Price - Discount)
       let dailyRate = room ? room.price : 0;
       if (room && room.discount) {
         dailyRate = Math.round(dailyRate * (1 - room.discount / 100));
       }
 
-      // Calculate Paid Today
+      const numberOfNights = calculateNights(guest.checkIn, guest.checkOut);
+      const projectedBill = dailyRate * numberOfNights;
+
       const paidToday = transactions
         .filter(t => t.guestId === guest.id && t.date === selectedDate && t.type === 'Income')
         .reduce((sum, t) => sum + t.amount, 0);
 
-      // Determine Status for the day
       let status = 'Stayover';
       if (guest.checkIn === selectedDate) status = 'Arrival';
       if (guest.checkOut === selectedDate) status = 'Departure';
-      if (guest.status === 'Checked Out' && guest.checkOut < selectedDate) status = 'Post-Stay'; // Paid after leaving
+      if (guest.status === 'Checked Out' && guest.checkOut < selectedDate) status = 'Post-Stay';
 
       return {
         guestId: guest.id,
@@ -47,17 +53,19 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
         guestName: guest.name,
         status,
         dailyRate,
+        projectedBill,
         paidToday,
         balance: guest.balance,
       };
     });
 
-    // Summary Calculations
     const totalCollected = rows.reduce((sum, r) => sum + r.paidToday, 0);
     const totalBalances = rows.reduce((sum, r) => sum + r.balance, 0);
-    const potentialRevenue = rows.filter(r => r.status !== 'Departure' && r.status !== 'Post-Stay').reduce((sum, r) => sum + r.dailyRate, 0);
+    const totalProjectedRevenue = rows.filter(r => r.status !== 'Post-Stay').reduce((sum, r) => sum + r.projectedBill, 0);
+    const dailyAccruedRevenue = rows.filter(r => r.status !== 'Departure' && r.status !== 'Post-Stay').reduce((sum, r) => sum + r.dailyRate, 0);
 
-    return { rows, totalCollected, totalBalances, potentialRevenue };
+
+    return { rows, totalCollected, totalBalances, totalProjectedRevenue, dailyAccruedRevenue };
   }, [guests, rooms, transactions, selectedDate]);
 
   const handlePrint = () => {
@@ -90,18 +98,16 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 print:grid-cols-3">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 print:grid-cols-4">
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-start">
              <div>
-               <p className="text-sm font-medium text-slate-500">Total Collected Today</p>
+               <p className="text-sm font-medium text-slate-500">Total Collected</p>
                <h3 className="text-3xl font-bold text-emerald-600 mt-1">${reportData.totalCollected.toLocaleString()}</h3>
              </div>
-             <div className="p-3 bg-emerald-100 rounded-full text-emerald-600">
-               <DollarSign size={24} />
-             </div>
+             <div className="p-3 bg-emerald-100 rounded-full text-emerald-600"><DollarSign size={24} /></div>
           </div>
-          <p className="text-xs text-slate-400 mt-4">Actual cash/card received</p>
+          <p className="text-xs text-slate-400 mt-4">Cash/card received on this date</p>
         </div>
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
@@ -110,24 +116,31 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
                <p className="text-sm font-medium text-slate-500">Outstanding Balances</p>
                <h3 className="text-3xl font-bold text-red-500 mt-1">${reportData.totalBalances.toLocaleString()}</h3>
              </div>
-             <div className="p-3 bg-red-100 rounded-full text-red-500">
-               <Wallet size={24} />
-             </div>
+             <div className="p-3 bg-red-100 rounded-full text-red-500"><Wallet size={24} /></div>
           </div>
-          <p className="text-xs text-slate-400 mt-4">Total amount owed by these guests</p>
+          <p className="text-xs text-slate-400 mt-4">Total amount owed by active guests</p>
         </div>
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-start">
              <div>
-               <p className="text-sm font-medium text-slate-500">Daily Room Revenue</p>
-               <h3 className="text-3xl font-bold text-blue-600 mt-1">${reportData.potentialRevenue.toLocaleString()}</h3>
+               <p className="text-sm font-medium text-slate-500">Daily Accrued</p>
+               <h3 className="text-3xl font-bold text-blue-600 mt-1">${reportData.dailyAccruedRevenue.toLocaleString()}</h3>
              </div>
-             <div className="p-3 bg-blue-100 rounded-full text-blue-600">
-               <ArrowRightCircle size={24} />
-             </div>
+             <div className="p-3 bg-blue-100 rounded-full text-blue-600"><TrendingUp size={24} /></div>
           </div>
-          <p className="text-xs text-slate-400 mt-4">Accrued based on nightly rates</p>
+          <p className="text-xs text-slate-400 mt-4">Revenue from today's stays</p>
+        </div>
+        
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between bg-slate-50">
+          <div className="flex justify-between items-start">
+             <div>
+               <p className="text-sm font-medium text-slate-500">Projected Revenue</p>
+               <h3 className="text-3xl font-bold text-purple-600 mt-1">${reportData.totalProjectedRevenue.toLocaleString()}</h3>
+             </div>
+             <div className="p-3 bg-purple-100 rounded-full text-purple-600"><Wallet size={24} /></div>
+          </div>
+          <p className="text-xs text-slate-400 mt-4">Total expected from current stays</p>
         </div>
       </div>
 
@@ -144,8 +157,9 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
                 <th className="px-6 py-3">Guest Name</th>
                 <th className="px-6 py-3">Status</th>
                 <th className="px-6 py-3 text-right">Nightly Rate</th>
+                <th className="px-6 py-3 text-right">Projected Bill</th>
                 <th className="px-6 py-3 text-right bg-emerald-50/50 print:bg-transparent">Paid Today</th>
-                <th className="px-6 py-3 text-right">Total Due</th>
+                <th className="px-6 py-3 text-right">Total Due Now</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -165,6 +179,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
                       </span>
                     </td>
                     <td className="px-6 py-3 text-right">${row.dailyRate}</td>
+                    <td className="px-6 py-3 text-right font-medium text-purple-700">${row.projectedBill.toLocaleString()}</td>
                     <td className="px-6 py-3 text-right font-bold text-emerald-600 bg-emerald-50/30 print:bg-transparent">
                       {row.paidToday > 0 ? `$${row.paidToday.toLocaleString()}` : '-'}
                     </td>
@@ -175,7 +190,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400 italic">
+                  <td colSpan={7} className="p-8 text-center text-slate-400 italic">
                     No activity found for this date.
                   </td>
                 </tr>
@@ -184,7 +199,8 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
               {reportData.rows.length > 0 && (
                 <tr className="bg-slate-50 font-bold text-slate-800 border-t-2 border-slate-200 print:bg-slate-100">
                   <td colSpan={3} className="px-6 py-3 text-right uppercase text-xs tracking-wider">Daily Totals</td>
-                  <td className="px-6 py-3 text-right">${reportData.potentialRevenue.toLocaleString()}</td>
+                  <td className="px-6 py-3 text-right">${reportData.dailyAccruedRevenue.toLocaleString()}</td>
+                  <td className="px-6 py-3 text-right text-purple-700">${reportData.totalProjectedRevenue.toLocaleString()}</td>
                   <td className="px-6 py-3 text-right text-emerald-700">${reportData.totalCollected.toLocaleString()}</td>
                   <td className="px-6 py-3 text-right text-red-600">${reportData.totalBalances.toLocaleString()}</td>
                 </tr>

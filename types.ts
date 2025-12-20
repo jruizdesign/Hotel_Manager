@@ -29,7 +29,7 @@ export interface Guest {
   email: string;
   phone: string;
   checkIn: string;
-  checkOut: string;
+  checkOut?: string; // Optional for VIPs
   roomNumber: string;
   vip: boolean;
   status: 'Checked In' | 'Reserved' | 'Checked Out';

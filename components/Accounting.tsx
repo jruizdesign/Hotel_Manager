@@ -199,7 +199,7 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
                 <th className="px-6 py-4">Room</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Daily Rate</th>
-                <th className="px-6 py-4 text-right">Total Balance Due</th>
+                <th className="px-6 py-4 text-right">Current Due</th>
                 <th className="px-6 py-4 text-right">Action</th>
               </tr>
             </thead>
@@ -207,6 +207,9 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
               {activeDebtors.length > 0 ? (
                 activeDebtors.map(guest => {
                   const dailyRate = getRoomPrice(guest.roomNumber);
+                  const isVip = guest.vip;
+                  const isUpToDate = guest.balance <= 0;
+                  
                   return (
                     <tr key={guest.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4">
@@ -215,7 +218,10 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
                             {guest.name.charAt(0)}
                           </div>
                           <div>
-                            <p className="font-medium text-slate-900">{guest.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-slate-900">{guest.name}</p>
+                              {isVip && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded uppercase tracking-wide">VIP</span>}
+                            </div>
                             <p className="text-xs text-slate-400">{guest.email}</p>
                           </div>
                         </div>
@@ -227,12 +233,20 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
                         }`}>
                           {guest.status}
                         </span>
+                        {isVip && !guest.checkOut && <div className="text-[10px] text-slate-400 mt-1">Indefinite Stay</div>}
                       </td>
                       <td className="px-6 py-4 text-slate-500">${dailyRate}/night</td>
                       <td className="px-6 py-4 text-right">
-                        <span className={`font-bold text-lg ${guest.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                          ${guest.balance.toLocaleString()}
-                        </span>
+                        {isVip && isUpToDate ? (
+                          <div>
+                            <span className="font-bold text-lg text-slate-700">${dailyRate.toLocaleString()}</span>
+                            <p className="text-[10px] text-slate-400">Daily Accrual</p>
+                          </div>
+                        ) : (
+                          <span className={`font-bold text-lg ${guest.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                            ${guest.balance.toLocaleString()}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button className="text-blue-600 hover:text-blue-800 font-medium text-xs">View Folio</button>

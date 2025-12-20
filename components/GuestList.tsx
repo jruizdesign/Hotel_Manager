@@ -306,7 +306,7 @@ const GuestList: React.FC<GuestListProps> = ({
                </div>
                <div className="p-3 bg-slate-50 rounded-lg">
                  <p className="text-[10px] uppercase font-bold text-slate-400">Dates</p>
-                 <p className="font-medium text-sm text-slate-800">{new Date(selectedGuest.checkIn).toLocaleDateString()} - {new Date(selectedGuest.checkOut).toLocaleDateString()}</p>
+                 <p className="font-medium text-sm text-slate-800">{new Date(selectedGuest.checkIn).toLocaleDateString()} - {selectedGuest.checkOut ? new Date(selectedGuest.checkOut).toLocaleDateString() : 'Undetermined' } </p>
                </div>
                <div className={`p-3 rounded-lg border ${hasBalance ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'}`}>
                  <p className="text-[10px] uppercase font-bold text-slate-400">Balance Due</p>

@@ -107,12 +107,12 @@ const Dashboard: React.FC<DashboardProps> = ({ rooms, guests, maintenance, trans
                 <Tooltip 
                   cursor={{ fill: '#f8fafc' }}
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, 'Income'] as [string, string]}
-                  labelFormatter={(label) => {
+                  formatter={(value: number | undefined) => value == undefined ? ['N/A', 'Income'] : [`$${value.toLocaleString()}`, 'Income']}/>
+                  labelFormatter={(label: string) => {
                      const item = revenueData.find(d => d.name === label);
                      return item ? `${label} (${item.date})` : label;
                   }}
-                />
+                /{'>'}
                 <Bar dataKey="amount" fill="#10b981" radius={[4, 4, 0, 0]} barSize={40} />
               </BarChart>
             </ResponsiveContainer>

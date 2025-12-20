@@ -23,7 +23,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
 
   const reportData = useMemo(() => {
     const activeGuests = guests.filter(g => {
-      const isStayActive = g.checkIn <= selectedDate && g.checkOut >= selectedDate;
+      const isStayActive = g.checkIn <= selectedDate && (!g.checkOut || g.checkOut >= selectedDate);
       const hasPaymentToday = transactions.some(t => t.guestId === g.id && t.date === selectedDate);
       return isStayActive || hasPaymentToday;
     });
@@ -35,8 +35,8 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
         dailyRate = Math.round(dailyRate * (1 - room.discount / 100));
       }
 
-      const numberOfNights = calculateNights(guest.checkIn, guest.checkOut);
-      const projectedBill = dailyRate * numberOfNights;
+      const numberOfNights = guest.checkOut ? calculateNights(guest.checkIn, guest.checkOut) : null;
+      const projectedBill = numberOfNights !== null ? dailyRate * numberOfNights : null;
 
       const paidToday = transactions
         .filter(t => t.guestId === guest.id && t.date === selectedDate && t.type === 'Income')
@@ -45,7 +45,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
       let status = 'Stayover';
       if (guest.checkIn === selectedDate) status = 'Arrival';
       if (guest.checkOut === selectedDate) status = 'Departure';
-      if (guest.status === 'Checked Out' && guest.checkOut < selectedDate) status = 'Post-Stay';
+      if (guest.status === 'Checked Out' && guest.checkOut && guest.checkOut < selectedDate) status = 'Post-Stay';
 
       return {
         guestId: guest.id,
@@ -61,7 +61,7 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
 
     const totalCollected = rows.reduce((sum, r) => sum + r.paidToday, 0);
     const totalBalances = rows.reduce((sum, r) => sum + r.balance, 0);
-    const totalProjectedRevenue = rows.filter(r => r.status !== 'Post-Stay').reduce((sum, r) => sum + r.projectedBill, 0);
+    const totalProjectedRevenue = rows.filter(r => r.projectedBill !== null).reduce((sum, r) => sum + r.projectedBill!, 0);
     const dailyAccruedRevenue = rows.filter(r => r.status !== 'Departure' && r.status !== 'Post-Stay').reduce((sum, r) => sum + r.dailyRate, 0);
 
 
@@ -179,7 +179,9 @@ const DailyReport: React.FC<DailyReportProps> = ({ guests, rooms, transactions }
                       </span>
                     </td>
                     <td className="px-6 py-3 text-right">${row.dailyRate}</td>
-                    <td className="px-6 py-3 text-right font-medium text-purple-700">${row.projectedBill.toLocaleString()}</td>
+                    <td className="px-6 py-3 text-right font-medium text-purple-700">
+                      {row.projectedBill !== null ? `$${row.projectedBill.toLocaleString()}` : <span className="text-slate-400">N/A</span>}
+                    </td>
                     <td className="px-6 py-3 text-right font-bold text-emerald-600 bg-emerald-50/30 print:bg-transparent">
                       {row.paidToday > 0 ? `$${row.paidToday.toLocaleString()}` : '-'}
                     </td>

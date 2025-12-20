@@ -329,7 +329,7 @@ const App: React.FC = () => {
       id: Date.now().toString(),
       guestId: guest.id,
       checkIn: guest.checkIn,
-      checkOut: guest.checkOut,
+      checkOut: guest.checkOut || new Date().toISOString().split('T')[0], // Use current date if undefined
       roomNumber: guest.roomNumber,
       roomType: targetRoom.type,
       totalAmount: targetRoom.price, // Simplified

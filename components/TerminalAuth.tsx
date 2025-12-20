@@ -1,402 +1,347 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Lock, ChevronRight, Server, Building2, AlertCircle, CloudOff, KeyRound, ArrowLeft, Mail, CheckCircle2, UserPlus, Info, Cloud } from 'lucide-react';
-import { loginTerminal, resetTerminalPassword, registerTerminalUser } from '../services/firebase';
+import { signInTerminal, resetPassword, getAuthInstance, onAuthChanged } from '../services/firebase'; 
 import { StorageService } from '../services/storage';
+import { User, Shield, Key, Mail, ArrowLeft, Hotel, Fingerprint, Loader2 } from 'lucide-react';
+import { AppSettings } from '../types';
 
-const TerminalAuth: React.FC = () => {
-  const [view, setView] = useState<'login' | 'forgot' | 'register'>('login');
+interface TerminalAuthProps {
+  onAuthenticated: (user: any) => void; 
+}
+
+const TerminalAuth: React.FC<TerminalAuthProps> = ({ onAuthenticated }) => {
+  const [mode, setMode] = useState('login'); // 'login', 'forgot', 'pin'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pin, setPin] = useState(Array(4).fill(''));
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isCloudMode, setIsCloudMode] = useState(false);
+  const [isPwa, setIsPwa] = useState(false);
+  const [hotelName, setHotelName] = useState('StaySync');
 
   useEffect(() => {
-    const checkSettings = async () => {
-      const settings = await StorageService.getSettings();
-      setIsCloudMode(settings.dataSource === 'Cloud');
+    const checkPwa = () => {
+      return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone || document.referrer.includes('android-app://');
     };
-    checkSettings();
-  }, []);
+    setIsPwa(checkPwa());
 
+    const fetchSettings = async () => {
+      const settings: AppSettings = await StorageService.getSettings();
+      setIsCloudMode(settings.dataSource === 'Cloud');
+      if(settings.hotelName) {
+        setHotelName(settings.hotelName);
+      }
+    };
+    fetchSettings();
+    
+    // Listen for auth state changes from Firebase
+    const auth = getAuthInstance();
+    if(auth) {
+      const unsubscribe = onAuthChanged(auth, (user) => {
+        if (user) {
+          onAuthenticated(user);
+        }
+      });
+      return () => unsubscribe(); // Cleanup subscription
+    }
+  }, [onAuthenticated]);
+  
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError(null);
+    setSuccess(null);
+    setIsLoading(true);
 
     try {
-      await loginTerminal(email, password);
-      // Success is handled by the onAuthStateChanged listener in App.tsx
+      const user = await signInTerminal(email, password);
+      setSuccess("Login successful! Redirecting...");
+      setTimeout(() => onAuthenticated(user), 1000);
     } catch (err: any) {
-      console.error("Auth Error", err);
-      if (err.message?.includes("Cloud connection not active")) {
-        setError("System Offline: Firebase Config missing in Environment Variables.");
-      } else if (err.code === 'auth/invalid-credential') {
-        setError("Invalid Email or Password.");
-      } else if (err.code === 'auth/too-many-requests') {
-        setError("Too many failed attempts. Try again later.");
+      console.error(err);
+      if (err.code) {
+        switch (err.code) {
+          case 'auth/user-not-found':
+          case 'auth/wrong-password':
+          case 'auth/invalid-credential':
+            setError("Invalid email or password.");
+            break;
+          case 'auth/too-many-requests':
+            setError("Too many attempts. Please try again later.");
+            break;
+          default:
+            setError("An unexpected error occurred.");
+        }
       } else {
-        setError(err.message || "Authentication Failed. Check connection.");
+        setError(err.message);
       }
       setIsLoading(false);
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError(null);
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      setIsLoading(false);
-      return;
-    }
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      setIsLoading(false);
-      return;
-    }
+    setSuccess(null);
+    setIsLoading(true);
 
     try {
-      await registerTerminalUser(email, password);
-      // Registration automatically signs the user in
+      await resetPassword(email);
+      setSuccess("Password reset email sent! Check your inbox.");
     } catch (err: any) {
-      console.error("Registration Error", err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError("Account already exists. Try logging in.");
-      } else if (err.code === 'auth/invalid-email') {
-        setError("Invalid email format.");
-      } else if (err.code === 'auth/weak-password') {
-        setError("Password is too weak.");
+      if (err.code === 'auth/user-not-found') {
+        setError("No account found with this email address.");
       } else {
-        setError("Failed to create account. Check console for details.");
+        setError("Failed to send reset email. Please try again.");
       }
-      setIsLoading(false);
     }
+    setIsLoading(false);
   };
-
-  const handleResetPassword = async (e: React.FormEvent) => {
+  
+  const handlePinLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    // PIN login logic here
+    console.log("PIN submitted:", pin.join(''));
+    setError('PIN login is not yet implemented.');
+  }
+
+  const resetState = (newMode: 'login' | 'forgot' | 'pin') => {
+    setMode(newMode);
+    setEmail('');
+    setPassword('');
+    setPin(Array(4).fill(''));
     setError(null);
     setSuccess(null);
-
-    if (!email) {
-      setError("Please enter your email address.");
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      await resetTerminalPassword(email);
-      setSuccess("Password reset link sent! Check your inbox.");
-      setIsLoading(false);
-    } catch (err: any) {
-       console.error("Reset Error", err);
-       if (err.code === 'auth/user-not-found') {
-          // For security, usually we don't say if user exists, but for internal app it helps
-          setError("No account found with this email."); 
-       } else if (err.code === 'auth/invalid-email') {
-          setError("Invalid email format.");
-       } else {
-          setError("Failed to send reset email. Try again.");
-       }
-       setIsLoading(false);
-    }
+    setIsLoading(false);
   };
 
-  const resetState = (newView: 'login' | 'forgot' | 'register') => {
-    setView(newView);
-    setError(null);
-    setSuccess(null);
-    setConfirmPassword('');
-    // We keep email/password state for convenience when switching between register/login
+  const PinInput = () => {
+    const handlePinChange = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+      const { value } = e.target;
+      if (/^[0-9]$/.test(value) || value === '') {
+        const newPin = [...pin];
+        newPin[index] = value;
+        setPin(newPin);
+        
+        // Focus next input
+        if (value !== '' && index < 3) {
+          const nextSibling = document.getElementById(`pin-${index + 1}`);
+          if (nextSibling) {
+            nextSibling.focus();
+          }
+        }
+      }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+      if (e.key === 'Backspace' && pin[index] === '' && index > 0) {
+        const prevSibling = document.getElementById(`pin-${index - 1}`);
+        if (prevSibling) {
+          prevSibling.focus();
+        }
+      }
+    }
+
+    return (
+      <div className="flex justify-center gap-3 mb-4">
+        {pin.map((digit, index) => (
+          <input
+            key={index}
+            id={`pin-${index}`}
+            type="password"
+            maxLength={1}
+            value={digit}
+            onChange={(e) => handlePinChange(e, index)}
+            onKeyDown={(e) => handleKeyDown(e, index)}
+            className="w-14 h-16 bg-slate-800/70 border-2 border-slate-700 rounded-lg text-center text-3xl font-bold text-white focus:border-emerald-500 focus:ring-emerald-500 focus:outline-none transition"
+            autoComplete="one-time-code"
+          />
+        ))}
+      </div>
+    );
   };
+
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden text-slate-200 font-sans">
-      {/* Background Effect */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
-      
-      <div className="relative z-10 w-full max-w-md">
+    <div className="bg-slate-900 min-h-screen flex items-center justify-center p-4 selection:bg-emerald-500/30">
+      <div className="w-full max-w-sm">
+
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-emerald-900/30 rounded-2xl border border-emerald-500/20 flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_-10px_rgba(16,185,129,0.3)]">
-            <Building2 size={40} className="text-emerald-500" />
-          </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">StaySync Cloud</h1>
-          <p className="text-slate-500 mt-2 text-sm flex items-center justify-center gap-2">
-            {isCloudMode ? (
-              <span className="text-emerald-400 flex items-center gap-1"><Cloud size={14} /> Live Cloud Access</span>
-            ) : (
-              <span className="text-amber-400 flex items-center gap-1"><CloudOff size={14} /> Offline Mode</span>
-            )}
-          </p>
+          <h1 className="text-5xl font-bold text-emerald-400 flex items-center justify-center gap-3">
+             <Hotel size={48} /> {hotelName}
+          </h1>
+          <p className="text-slate-400 mt-2">Hotel Management Terminal</p>
         </div>
 
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-8 shadow-2xl transition-all duration-300">
-          
-          {view === 'login' && (
-            <form onSubmit={handleLogin} className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
-              
-              {/* Only show default login hint if NOT in Cloud Mode */}
-              {!isCloudMode && (
-                <div className="bg-blue-900/20 border border-blue-500/30 p-3 rounded-lg flex gap-3 items-start">
-                   <Info className="text-blue-400 shrink-0 mt-0.5" size={16} />
-                   <div className="text-xs text-blue-200">
-                     <p className="font-bold mb-1">Default Login (Offline Mode)</p>
-                     <p>Email: <code className="bg-blue-900/50 px-1 rounded text-white">admin@hotel.com</code></p>
-                     <p>Pass: <code className="bg-blue-900/50 px-1 rounded text-white">password123</code></p>
-                   </div>
-                </div>
-              )}
+        <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl shadow-2xl shadow-slate-950/50 backdrop-blur-sm">
+          <div className="p-8">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-white">
+                {mode === 'login' && 'Terminal Access'}
+                {mode === 'forgot' && 'Reset Password'}
+                {mode === 'pin' && 'Enter PIN'}
+              </h2>
+              <p className="text-sm text-slate-400 mt-1">
+                {mode === 'login' && 'Sign in to continue'}
+                {mode === 'forgot' && 'Enter your email to get a reset link'}
+                {mode === 'pin' && 'Use your 4-digit staff PIN'}
+              </p>
+            </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Administrator Email
-                </label>
-                <input 
-                  type="email" 
-                  autoFocus
-                  required
-                  placeholder={isCloudMode ? "your@email.com" : "admin@hotel.com"}
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-lg py-3 px-4 text-white placeholder-slate-600 outline-none transition-all shadow-inner"
-                  value={email}
-                  onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Password
-                </label>
+            {/* Login Form */}
+            {mode === 'login' && (
+              <form onSubmit={handleLogin} className="space-y-4">
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                  <input 
-                    type="password" 
-                    required
-                    placeholder="••••••••"
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-600 outline-none transition-all shadow-inner"
-                    value={password}
-                    onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                  />
-                </div>
-                {isCloudMode && (
-                  <div className="flex justify-end mt-2">
-                     <button 
-                       type="button" 
-                       onClick={() => resetState('forgot')}
-                       className="text-xs text-emerald-500 hover:text-emerald-400 font-medium"
-                     >
-                       Forgot Password?
-                     </button>
-                  </div>
-                )}
-              </div>
-
-              {error && (
-                <div className="p-3 bg-red-900/20 border border-red-900/50 rounded-lg flex items-start gap-2 text-red-400 text-xs animate-in fade-in slide-in-from-top-1">
-                  {error.includes("Offline") ? <CloudOff size={16} className="shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <button 
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                   <span className="flex items-center gap-2">
-                     <Server className="animate-pulse" size={16} /> Authenticating...
-                   </span>
-                ) : (
-                   <>
-                     Connect Terminal <ChevronRight size={16} />
-                   </>
-                )}
-              </button>
-
-              <div className="pt-4 border-t border-slate-800 text-center">
-                 <p className="text-xs text-slate-500 mb-2">First time setting up?</p>
-                 <button
-                   type="button"
-                   onClick={() => resetState('register')}
-                   className="text-sm font-bold text-emerald-500 hover:text-emerald-400 transition-colors"
-                 >
-                   Create Administrator Account
-                 </button>
-              </div>
-            </form>
-          )}
-
-          {view === 'register' && (
-            <form onSubmit={handleRegister} className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="text-center mb-2">
-                 <h2 className="text-white font-bold text-lg flex items-center justify-center gap-2">
-                   <UserPlus size={20} className="text-emerald-500" /> Create Account
-                 </h2>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Email Address
-                </label>
-                <input 
-                  type="email" 
-                  autoFocus
-                  required
-                  placeholder={isCloudMode ? "your@email.com" : "admin@hotel.com"}
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-lg py-3 px-4 text-white placeholder-slate-600 outline-none transition-all shadow-inner"
-                  value={email}
-                  onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                  <input 
-                    type="password" 
-                    required
-                    placeholder="Create Password"
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-600 outline-none transition-all shadow-inner"
-                    value={password}
-                    onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Confirm Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                  <input 
-                    type="password" 
-                    required
-                    placeholder="Confirm Password"
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-600 outline-none transition-all shadow-inner"
-                    value={confirmPassword}
-                    onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }}
-                  />
-                </div>
-              </div>
-
-              {error && (
-                <div className="p-3 bg-red-900/20 border border-red-900/50 rounded-lg flex items-start gap-2 text-red-400 text-xs animate-in fade-in slide-in-from-top-1">
-                   <AlertCircle size={16} className="shrink-0" />
-                   <span>{error}</span>
-                </div>
-              )}
-
-              <button 
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                   <span className="flex items-center gap-2">
-                     <Server className="animate-pulse" size={16} /> Creating...
-                   </span>
-                ) : (
-                   "Create Account"
-                )}
-              </button>
-
-              <button 
-                type="button"
-                onClick={() => resetState('login')}
-                className="w-full text-slate-500 hover:text-white text-xs py-2 flex items-center justify-center gap-1 transition-colors"
-              >
-                <ArrowLeft size={12} /> Back to Login
-              </button>
-            </form>
-          )}
-
-          {view === 'forgot' && (
-            <form onSubmit={handleResetPassword} className="space-y-5 animate-in fade-in slide-in-from-left-4 duration-300">
-              <div className="text-center mb-2">
-                 <h2 className="text-white font-bold text-lg flex items-center justify-center gap-2">
-                   <KeyRound size={20} className="text-emerald-500" /> Reset Password
-                 </h2>
-                 <p className="text-slate-500 text-xs mt-1">Enter your admin email to receive a reset link.</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                   <input 
                     type="email" 
-                    autoFocus
-                    required
-                    placeholder="your@email.com"
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-600 outline-none transition-all shadow-inner"
+                    placeholder="Email" 
                     value={email}
-                    onChange={(e) => { setEmail(e.target.value); setError(null); setSuccess(null); }}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full bg-slate-800/70 border-2 border-slate-700 rounded-lg pl-10 pr-3 py-2.5 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-0 outline-none transition"
                   />
                 </div>
-              </div>
-
-              {error && (
-                <div className="p-3 bg-red-900/20 border border-red-900/50 rounded-lg flex items-center gap-2 text-red-400 text-xs animate-in fade-in slide-in-from-top-1">
-                  <AlertCircle size={16} />
-                  <span>{error}</span>
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input 
+                    type="password" 
+                    placeholder="Password" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="w-full bg-slate-800/70 border-2 border-slate-700 rounded-lg pl-10 pr-3 py-2.5 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-0 outline-none transition"
+                  />
                 </div>
-              )}
 
-              {success && (
-                <div className="p-3 bg-emerald-900/20 border border-emerald-900/50 rounded-lg flex items-center gap-2 text-emerald-400 text-xs animate-in fade-in slide-in-from-top-1">
-                  <CheckCircle2 size={16} />
-                  <span>{success}</span>
-                </div>
-              )}
-
-              <button 
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-all border border-slate-700 shadow-lg flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                   <span className="flex items-center gap-2">
-                     <Server className="animate-pulse" size={16} /> Sending...
-                   </span>
-                ) : (
-                   "Send Reset Link"
+                {error && (
+                  <p className="text-xs text-red-400 bg-red-500/10 border border-red-400/20 rounded-md p-2 text-center">{error}</p>
                 )}
-              </button>
+                {success && (
+                  <p className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-400/20 rounded-md p-2 text-center">{success}</p>
+                )}
 
-              <button 
-                type="button"
-                onClick={() => resetState('login')}
-                className="w-full text-slate-500 hover:text-white text-xs py-2 flex items-center justify-center gap-1 transition-colors"
-              >
-                <ArrowLeft size={12} /> Back to Login
-              </button>
-            </form>
-          )}
+                <button 
+                  type="submit" 
+                  disabled={isLoading}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 disabled:bg-slate-600"
+                >
+                  {isLoading ? <><Loader2 size={20} className="animate-spin" /> Authenticating...</> : 'Sign In'}
+                </button>
 
-        </div>
+                <div className="text-center">
+                  <button 
+                    type="button"
+                    onClick={() => resetState('forgot')}
+                    className="text-xs text-slate-400 hover:text-emerald-400 transition-colors"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+                
+                {/* Conditionally render PIN login button */}
+                {!isPwa && (
+                  <div className="flex items-center justify-center gap-3 pt-2">
+                    <span className="h-px w-full bg-slate-700"></span>
+                    <span className="text-slate-500 text-xs uppercase">OR</span>
+                    <span className="h-px w-full bg-slate-700"></span>
+                  </div>
+                )}
+                
+                {!isPwa && (
+                   <button 
+                    type="button"
+                    onClick={() => resetState('pin')}
+                    className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Fingerprint size={18} /> Use PIN
+                  </button>
+                )}
+              </form>
+            )}
 
-        <div className="mt-8 text-center space-y-2">
-          <p className="text-xs text-slate-600">
-            <Shield size={12} className="inline mr-1" />
-            {isCloudMode ? "Secured by Google Firebase" : "Local Encrypted Storage"}
-          </p>
+            {/* Forgot Password Form */}
+            {mode === 'forgot' && (
+              <form onSubmit={handlePasswordReset} className="space-y-4">
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input 
+                    type="email" 
+                    placeholder="Email" 
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full bg-slate-800/70 border-2 border-slate-700 rounded-lg pl-10 pr-3 py-2.5 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-0 outline-none transition"
+                  />
+                </div>
+                
+                {error && (
+                  <p className="text-xs text-red-400 bg-red-500/10 border border-red-400/20 rounded-md p-2">{error}</p>
+                )}
+                {success && (
+                  <p className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-400/20 rounded-md p-2">{success}</p>
+                )}
+
+                <button 
+                  type="submit" 
+                  disabled={isLoading}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 disabled:bg-slate-600"
+                >
+                  {isLoading ? <><Loader2 size={20} className="animate-spin" /> Sending...</> : 'Send Reset Link'}
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => resetState('login')}
+                  className="w-full text-slate-500 hover:text-white text-xs py-2 flex items-center justify-center gap-1 transition-colors"
+                >
+                  <ArrowLeft size={12} /> Back to Login
+                </button>
+              </form>
+            )}
+            
+            {/* PIN Login Form */}
+            {mode === 'pin' && (
+                <form onSubmit={handlePinLogin} className="space-y-4">
+                  <PinInput />
+                  
+                  {error && (
+                    <p className="text-xs text-red-400 bg-red-500/10 border border-red-400/20 rounded-md p-2 text-center">{error}</p>
+                  )}
+                  {success && (
+                    <p className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-400/20 rounded-md p-2 text-center">{success}</p>
+                  )}
+
+                  <button 
+                    type="submit" 
+                    disabled={isLoading}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 disabled:bg-slate-600"
+                  >
+                    {isLoading ? <><Loader2 size={20} className="animate-spin" /> Verifying...</> : 'Login with PIN'}
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => resetState('login')}
+                    className="w-full text-slate-500 hover:text-white text-xs py-2 flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <ArrowLeft size={12} /> Back to Login
+                  </button>
+                </form>
+              )}
+    
+            </div>
+    
+            <div className="mt-8 text-center space-y-2">
+               <div className="text-slate-600 text-[10px] text-center font-bold uppercase tracking-[0.2em]">
+                <p className="flex items-center justify-center gap-2">
+                  <Shield size={10} className="text-slate-700" /> StaySync Security Framework v4.2
+                </p>
+                <p className="mt-2 opacity-40">Architected by Jason Ruiz • Global Terminal Auth</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
-
-export default TerminalAuth;
+    );
+    };
+    
+    export default TerminalAuth;

@@ -111,6 +111,7 @@ export interface FeatureRequest {
   status: 'Pending' | 'In Progress' | 'Completed' | 'Rejected';
   submittedBy: string;
   submittedDate: string;
+  upvotes: number;
 }
 
 export interface DNRRecord {

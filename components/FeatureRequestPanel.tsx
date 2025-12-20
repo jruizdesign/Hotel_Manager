@@ -34,8 +34,10 @@ const FeatureRequestPanel: React.FC<FeatureRequestPanelProps> = ({
       title: formData.title,
       description: formData.description,
       priority: formData.priority,
-      submittedBy: userName
+      submittedBy: userName,
+      upvotes: 0
     });
+  
     setFormData({ title: '', description: '', priority: 'Medium' });
     setIsModalOpen(false);
   };

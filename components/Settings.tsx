@@ -50,6 +50,23 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
     }
     setDbStats(stats);
   };
+  
+  const handleDownloadBackup = async () => {
+    try {
+      const backupData = await StorageService.exportAllData();
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `staysync_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error("Backup failed", e);
+      alert("Failed to generate backup.");
+    }
+  };
 
   const handleDemoModeToggle = async () => {
     if (settings.demoMode) {
@@ -106,23 +123,6 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
     setSettings(prev => ({ ...prev, firebaseConfig: { ...prev.firebaseConfig!, [key]: value } }));
   };
   
-  const handleDownloadBackup = async () => {
-    try {
-      const backupData = await StorageService.exportAllData();
-      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `staysync_backup_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (e) {
-      console.error("Backup failed", e);
-      alert("Failed to generate backup.");
-    }
-  };
-
   return (
     <div className="space-y-8 max-w-4xl pb-10">
         <div>

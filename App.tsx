@@ -373,7 +373,7 @@ const App: React.FC = () => {
       case 'reports': return <DailyReport guests={guests} rooms={rooms} transactions={transactions} />;
       case 'check-in-out': return <CheckInCheckOutPanel guests={guests} rooms={rooms} onUpdateGuest={handleUpdateGuest} onUpdateRoom={handleUpdateRoom} />;
       case 'rooms': return <RoomList rooms={rooms} onStatusChange={handleRoomStatusChange} onAddRoom={handleAddRoom} onUpdateRoom={loadData} onDeleteRoom={loadData} onBookRoom={(num) => setBookingRequest({ isOpen: true, roomNumber: num })} onCheckOut={handleCheckOutGuest} isManager={currentUser?.role !== 'Staff'} />;
-      case 'accounting': return <Accounting transactions={transactions} />;
+      case 'accounting': return <Accounting transactions={transactions} guests={guests} rooms={rooms} />;
       case 'guests': return <GuestList guests={guests} rooms={rooms} transactions={transactions} history={history} dnrRecords={dnrRecords} onAddGuest={handleAddGuest} onUpdateGuest={handleUpdateGuest} onAddPayment={handleAddPayment} onCheckOut={handleCheckOutGuest} onAddDNR={loadData} onDeleteDNR={loadData} userRole={currentUser?.role || 'Staff'} externalBookingRequest={bookingRequest} onClearExternalRequest={() => setBookingRequest({ isOpen: false })} />;
       case 'staff': return <StaffList staff={staff} attendanceLogs={attendanceLogs} currentUserId={currentUser?.id} userRole={currentUser?.role || 'Staff'} onAddStaff={loadData} onDeleteStaff={loadData} onUpdateStatus={loadData} onAttendanceAction={handleAttendanceAction} onUpdateAttendanceLog={handleUpdateAttendanceLog} />;
       case 'maintenance': return <MaintenancePanel tickets={maintenance} rooms={rooms} userRole={currentUser?.role || 'Staff'} onAddTicket={loadData} onResolveTicket={loadData} />;

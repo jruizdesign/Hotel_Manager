@@ -1,4 +1,3 @@
-
 export enum RoomStatus {
   AVAILABLE = 'Available',
   OCCUPIED = 'Occupied',
@@ -146,6 +145,7 @@ export interface FirebaseConfig {
 }
 
 export interface AppSettings {
+  hotelName: string;
   dataSource: DataSource;
   demoMode: boolean;
   maintenanceEmail?: string;

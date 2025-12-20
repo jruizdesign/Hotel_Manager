@@ -59,80 +59,50 @@ exports.processDocument = functions.firestore.document('documents/{documentId}')
   const newDocument = snap.data();
   const documentId = context.params.documentId;
   
-  if (!newDocument) {
-    functions.logger.log('Document data is missing.');
+  if (!newDocument || !newDocument.fileData || typeof newDocument.fileData !== 'string') {
+    functions.logger.log('Document data is missing or invalid.');
     return null;
   }
 
   const { fileData, fileType, title } = newDocument;
-
-  if (!fileData || typeof fileData !== 'string') {
-    functions.logger.log('Document does not contain fileData or it is not a string.');
-    return null;
-  }
+  const matches = fileData.match(/^data:(.+);base64,(.+)$/);
   
-  if (!fileType || !fileType.startsWith('image/')) {
-    functions.logger.log(`File type ${fileType} is not an image, skipping processing.`);
-    return null;
-  }
-
-  const matches = fileData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
   if (!matches || matches.length !== 3) {
-      functions.logger.error('Invalid fileData format. Expected base64 data URI.');
-      return null;
+    functions.logger.error('Invalid base64 data format.');
+    return null;
   }
+
   const buffer = Buffer.from(matches[2], 'base64');
-  
   const bucket = admin.storage().bucket();
-  const tempFileName = `${documentId}_${title || 'document'}`;
-  const tempFilePath = `temp-uploads/${tempFileName}`;
-  const file = bucket.file(tempFilePath);
-  
-  await file.save(buffer, {
-      metadata: { contentType: fileType },
-  });
-  functions.logger.log(`Temporarily saved to ${tempFilePath}`);
-  
-  const gcsUri = `gs://${bucket.name}/${tempFilePath}`;
-  let destinationFolder = 'others';
+  const fileName = `${documentId}_${title.replace(/\s/g, '_')}`;
+  let destinationFolder = 'documents/others'; // Default folder
+
+  // Use Vision API to classify the document
   try {
-    const [result] = await visionClient.textDetection(gcsUri);
-    const detections = result.textAnnotations;
-    if (detections && detections.length > 0) {
-        const text = detections.map(d => d.description).join(' ').toLowerCase();
+    const [result] = await visionClient.textDetection({ image: { content: buffer } });
+    const text = result.fullTextAnnotation?.text.toLowerCase() || '';
 
-        if (text.includes('invoice')) {
-          destinationFolder = 'invoices';
-        } else if (text.includes('receipt')) {
-          destinationFolder = 'receipts';
-        } else if (text.includes('id') || text.includes('driver license')) {
-          destinationFolder = 'ids';
-        }
+    if (text.includes('invoice')) {
+      destinationFolder = 'documents/invoices';
+    } else if (text.includes('receipt')) {
+      destinationFolder = 'documents/receipts';
+    } else if (text.includes('id') || text.includes('license')) {
+      destinationFolder = 'documents/ids';
     }
-    functions.logger.log(`Classification result: ${destinationFolder}`);
-
   } catch (error) {
-    functions.logger.error('Error processing image with Vision API:', error);
+    functions.logger.error('Vision API processing failed', error);
   }
-
-  const destinationPath = `${destinationFolder}/${tempFileName}`;
-  await file.move(destinationPath);
-  functions.logger.log(`File moved to ${destinationPath}`);
   
-  const finalFile = bucket.file(destinationPath);
-  const [url] = await finalFile.getSignedUrl({
-    action: 'read',
-    expires: '03-09-2491'
-  });
+  const filePath = `${destinationFolder}/${fileName}`;
+  const file = bucket.file(filePath);
 
-  await snap.ref.update({
-    storagePath: destinationPath,
+  await file.save(buffer, { metadata: { contentType: fileType } });
+  const [url] = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' });
+
+  return snap.ref.update({
+    storagePath: filePath,
     fileUrl: url,
-    category: destinationFolder,
-    fileData: admin.firestore.FieldValue.delete()
+    category: destinationFolder.split('/').pop(),
+    fileData: admin.firestore.FieldValue.delete(), // Remove the base64 data
   });
-  
-  functions.logger.log(`Firestore document ${documentId} updated.`);
-  
-  return null;
 });

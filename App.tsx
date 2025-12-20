@@ -18,7 +18,7 @@ import CheckInCheckOutPanel from './components/CheckInCheckOutPanel';
 import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest, AttendanceLog, AttendanceAction, DNRRecord } from './types';
 import { StorageService } from './services/storage';
 import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
-import { Wrench, Loader2, Mail, AlertTriangle, FileText, CheckCircle } from 'lucide-react';
+import { Wrench, Loader2, Mail, AlertTriangle, FileText, CheckCircle, Menu } from 'lucide-react'; // Added Menu icon
 import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
 
 const App: React.FC = () => {
@@ -27,6 +27,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [currentView, setView] = useState<ViewState>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
+  const [isMobileNavOpen, setMobileNavOpen] = useState(false);
   
   const [rooms, setRooms] = useState<Room[]>([]);
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -148,7 +149,6 @@ const App: React.FC = () => {
     setToast({ message: 'Log Updated', subtext: 'Attendance record modified by manager.' });
   };
 
-  // --- Document Generation Helpers ---
   const generateInvoice = async (guest: Guest, room: Room) => {
     const total = room.discount ? room.price * (1 - room.discount / 100) : room.price;
     const invoiceId = `INV-${Date.now()}`;
@@ -298,7 +298,6 @@ const App: React.FC = () => {
       StorageService.saveGuests(updatedGuests)
     ]);
     
-    // TRIGGER AUTO RECEIPT
     generateReceipt(guest, amount, note);
     setToast({ message: 'Payment Recorded', subtext: 'Receipt generated and synced to storage.' });
   };
@@ -310,7 +309,6 @@ const App: React.FC = () => {
     const guest = guests.find(g => g.id === targetRoom.guestId);
     if (!guest) return;
 
-    // VALIDATION: DON'T ALLOW CHECKOUT WITH BALANCE
     if (guest.balance > 0) {
       setToast({ 
         message: 'Checkout Blocked', 
@@ -320,19 +318,17 @@ const App: React.FC = () => {
       return;
     }
 
-    // Perform Checkout
     const updatedRooms = rooms.map(r => r.id === roomId ? { ...r, status: RoomStatus.DIRTY, guestId: undefined } : r);
     const updatedGuests = guests.map(g => g.id === guest.id ? { ...g, status: 'Checked Out' as const } : g);
     
-    // Save to History
     const newHistory: BookingHistory = {
       id: Date.now().toString(),
       guestId: guest.id,
       checkIn: guest.checkIn,
-      checkOut: guest.checkOut || new Date().toISOString().split('T')[0], // Use current date if undefined
+      checkOut: guest.checkOut || new Date().toISOString().split('T')[0], 
       roomNumber: guest.roomNumber,
       roomType: targetRoom.type,
-      totalAmount: targetRoom.price, // Simplified
+      totalAmount: targetRoom.price,
       status: 'Completed'
     };
     const updatedHistory = [newHistory, ...history];
@@ -373,7 +369,7 @@ const App: React.FC = () => {
       case 'reports': return <DailyReport guests={guests} rooms={rooms} transactions={transactions} />;
       case 'check-in-out': return <CheckInCheckOutPanel guests={guests} rooms={rooms} onUpdateGuest={handleUpdateGuest} onUpdateRoom={handleUpdateRoom} />;
       case 'rooms': return <RoomList rooms={rooms} onStatusChange={handleRoomStatusChange} onAddRoom={handleAddRoom} onUpdateRoom={loadData} onDeleteRoom={loadData} onBookRoom={(num) => setBookingRequest({ isOpen: true, roomNumber: num })} onCheckOut={handleCheckOutGuest} isManager={currentUser?.role !== 'Staff'} />;
-      case 'accounting': return <Accounting transactions={transactions} guests={guests} rooms={rooms} />;
+      case 'accounting': return <Accounting transactions={transactions} guests={[]} rooms={[]} />;
       case 'guests': return <GuestList guests={guests} rooms={rooms} transactions={transactions} history={history} dnrRecords={dnrRecords} onAddGuest={handleAddGuest} onUpdateGuest={handleUpdateGuest} onAddPayment={handleAddPayment} onCheckOut={handleCheckOutGuest} onAddDNR={loadData} onDeleteDNR={loadData} userRole={currentUser?.role || 'Staff'} externalBookingRequest={bookingRequest} onClearExternalRequest={() => setBookingRequest({ isOpen: false })} />;
       case 'staff': return <StaffList staff={staff} attendanceLogs={attendanceLogs} currentUserId={currentUser?.id} userRole={currentUser?.role || 'Staff'} onAddStaff={loadData} onDeleteStaff={loadData} onUpdateStatus={loadData} onAttendanceAction={handleAttendanceAction} onUpdateAttendanceLog={handleUpdateAttendanceLog} />;
       case 'maintenance': return <MaintenancePanel tickets={maintenance} rooms={rooms} userRole={currentUser?.role || 'Staff'} onAddTicket={loadData} onResolveTicket={loadData} />;
@@ -391,11 +387,34 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-slate-50 relative">
-      <Sidebar currentView={currentView} setView={setView} userRole={currentUser.role} onLogout={handleLogout} onLock={handleLock} />
-      <main className="flex-1 ml-64 p-8 overflow-y-auto">
+      <Sidebar 
+        currentView={currentView} 
+        setView={setView} 
+        userRole={currentUser.role} 
+        onLogout={handleLogout} 
+        onLock={handleLock} 
+        isMobileNavOpen={isMobileNavOpen}
+        setMobileNavOpen={setMobileNavOpen}
+      />
+      <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-y-auto">
         <header className="flex justify-between items-center mb-8">
-          <div><h1 className="text-2xl font-bold text-slate-800 capitalize">{currentView.replace('-',' ')}</h1><p className="text-slate-500 text-sm">Welcome back, {currentUser.name}.</p></div>
-          <div className="flex items-center gap-4"><div className="text-right"><p className="text-sm font-bold text-slate-700">{new Date().toLocaleDateString()}</p></div><div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold border-2 border-emerald-200 shadow-sm">{currentUser.avatarInitials}</div></div>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setMobileNavOpen(true)} className="md:hidden p-2 text-slate-600 hover:text-slate-900">
+              <Menu size={24} />
+            </button>
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-slate-800 capitalize">{currentView.replace('-',' ')}</h1>
+              <p className="text-slate-500 text-sm hidden md:block">Welcome back, {currentUser.name}.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right hidden md:block">
+              <p className="text-sm font-bold text-slate-700">{new Date().toLocaleDateString()}</p>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold border-2 border-emerald-200 shadow-sm">
+              {currentUser.avatarInitials}
+            </div>
+          </div>
         </header>
         {renderContent()}
       </main>

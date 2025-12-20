@@ -13,7 +13,8 @@ import MaintenancePanel from './components/MaintenancePanel';
 import DocumentCenter from './components/DocumentCenter';
 import FeatureRequestPanel from './components/FeatureRequestPanel';
 import TerminalAuth from './components/TerminalAuth';
-import DailyReport from './components/DailyReport'; 
+import DailyReport from './components/DailyReport';
+import CheckInCheckOutPanel from './components/CheckInCheckOutPanel';
 import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest, AttendanceLog, AttendanceAction, DNRRecord } from './types';
 import { StorageService } from './services/storage';
 import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
@@ -239,6 +240,12 @@ const App: React.FC = () => {
     await StorageService.saveRooms(updatedRooms);
   };
 
+  const handleUpdateRoom = async (updatedRoom: Room) => {
+    const updatedRooms = rooms.map(r => r.id === updatedRoom.id ? updatedRoom : r);
+    setRooms(updatedRooms);
+    await StorageService.saveRooms(updatedRooms);
+  };
+
   const handleAddRoom = async (newRoomData: Omit<Room, 'id' | 'status'>) => {
     const newRoom: Room = { ...newRoomData, id: Date.now().toString(), status: RoomStatus.AVAILABLE };
     const updatedRooms = [...rooms, newRoom];
@@ -364,6 +371,7 @@ const App: React.FC = () => {
     switch (currentView) {
       case 'dashboard': return <Dashboard rooms={rooms} guests={guests} maintenance={maintenance} transactions={transactions} />;
       case 'reports': return <DailyReport guests={guests} rooms={rooms} transactions={transactions} />;
+      case 'check-in-out': return <CheckInCheckOutPanel guests={guests} rooms={rooms} onUpdateGuest={handleUpdateGuest} onUpdateRoom={handleUpdateRoom} />;
       case 'rooms': return <RoomList rooms={rooms} onStatusChange={handleRoomStatusChange} onAddRoom={handleAddRoom} onUpdateRoom={loadData} onDeleteRoom={loadData} onBookRoom={(num) => setBookingRequest({ isOpen: true, roomNumber: num })} onCheckOut={handleCheckOutGuest} isManager={currentUser?.role !== 'Staff'} />;
       case 'accounting': return <Accounting transactions={transactions} />;
       case 'guests': return <GuestList guests={guests} rooms={rooms} transactions={transactions} history={history} dnrRecords={dnrRecords} onAddGuest={handleAddGuest} onUpdateGuest={handleUpdateGuest} onAddPayment={handleAddPayment} onCheckOut={handleCheckOutGuest} onAddDNR={loadData} onDeleteDNR={loadData} userRole={currentUser?.role || 'Staff'} externalBookingRequest={bookingRequest} onClearExternalRequest={() => setBookingRequest({ isOpen: false })} />;
@@ -386,7 +394,7 @@ const App: React.FC = () => {
       <Sidebar currentView={currentView} setView={setView} userRole={currentUser.role} onLogout={handleLogout} onLock={handleLock} />
       <main className="flex-1 ml-64 p-8 overflow-y-auto">
         <header className="flex justify-between items-center mb-8">
-          <div><h1 className="text-2xl font-bold text-slate-800 capitalize">{currentView}</h1><p className="text-slate-500 text-sm">Welcome back, {currentUser.name}.</p></div>
+          <div><h1 className="text-2xl font-bold text-slate-800 capitalize">{currentView.replace('-',' ')}</h1><p className="text-slate-500 text-sm">Welcome back, {currentUser.name}.</p></div>
           <div className="flex items-center gap-4"><div className="text-right"><p className="text-sm font-bold text-slate-700">{new Date().toLocaleDateString()}</p></div><div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold border-2 border-emerald-200 shadow-sm">{currentUser.avatarInitials}</div></div>
         </header>
         {renderContent()}

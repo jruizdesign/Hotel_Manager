@@ -123,7 +123,7 @@ export interface DNRRecord {
   dateAdded: string;
 }
 
-export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings' | 'reports';
+export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings' | 'reports' | 'check-in-out';
 
 export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
 

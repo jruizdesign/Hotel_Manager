@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewState, UserRole } from '../types';
-import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut, Settings, FileText, Lightbulb, ClipboardCheck, Lock } from 'lucide-react';
+import { LayoutDashboard, BedDouble, Users, Wrench, Briefcase, DollarSign, LogOut, Settings, FileText, Lightbulb, ClipboardCheck, Lock, UserCheck } from 'lucide-react';
 
 interface SidebarProps {
   currentView: ViewState;
@@ -14,6 +14,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userRole, onLog
   // Define all possible items
   const allNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Superuser', 'Manager', 'Staff'] },
+    { id: 'check-in-out', label: 'Check In/Out', icon: UserCheck, roles: ['Superuser', 'Manager', 'Staff'] },
     { id: 'reports', label: 'Daily Report', icon: ClipboardCheck, roles: ['Superuser', 'Manager', 'Staff'] },
     { id: 'rooms', label: 'Rooms', icon: BedDouble, roles: ['Superuser', 'Manager', 'Staff'] },
     { id: 'guests', label: 'Guests', icon: Users, roles: ['Superuser', 'Manager', 'Staff'] },

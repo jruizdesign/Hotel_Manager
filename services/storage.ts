@@ -13,7 +13,7 @@ const hasEnvConfig = !!process.env.FIREBASE_API_KEY;
 const DEFAULT_SETTINGS: AppSettings = {
   dataSource: hasEnvConfig ? 'Cloud' : 'Local',
   // If cloud config is present, disable demo mode by default to prioritize real data
-  demoMode: !hasEnvConfig, 
+  demoMode: !hasEnvConfig,
   maintenanceEmail: 'maintenance@staysync.hotel',
   recaptchaSiteKey: '',
   firebaseConfig: {
@@ -23,7 +23,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET || '',
     messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
     appId: process.env.FIREBASE_APP_ID || ''
-  }
+  },
+  hotelName: ''
 };
 
 // --- Cloud Helper Methods ---

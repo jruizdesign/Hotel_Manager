@@ -20,7 +20,6 @@ import { StorageService } from './services/storage';
 import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
 import { Wrench, Loader2, Mail, AlertTriangle, FileText, CheckCircle, Menu } from 'lucide-react'; // Added Menu icon
 import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
-import { SpeedInsights } from "@vercel/speed-insights/next"
 
 const App: React.FC = () => {
   const [terminalUser, setTerminalUser] = useState<any | null>(null);

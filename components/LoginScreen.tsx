@@ -1,67 +1,579 @@
-import { useState } from 'react';
-import { Shield } from 'lucide-react';
+import React, { useState } from 'react';
+import { CurrentUser, Staff, UserRole } from '../types';
+import { 
+  Shield, 
+  Lock, 
+  ChevronRight, 
+  User, 
+  AlertCircle, 
+  Key, 
+  Unlock, 
+  ShieldCheck, 
+  LogOut, 
+  Mail, 
+  AtSign, 
+  Loader2, 
+  ArrowLeft,
+  Fingerprint,
+  Info,
+  CheckCircle2,
+  Building2,
+  UserPlus,
+  UserCheck
+} from 'lucide-react';
+import { loginTerminal } from '../services/firebase';
 
 interface LoginScreenProps {
-  onLogin: (password: string) => void;
-  error: string | null;
-  isLoading: boolean;
+  staff: Staff[];
+  onLogin: (user: CurrentUser) => void;
+  onCreateAdmin: (name: string, pin: string) => void;
+  onRegisterStaff: (staffData: Omit<Staff, 'id' | 'status'>) => void;
 }
 
-const LoginScreen = ({ onLogin, error, isLoading }: LoginScreenProps) => {
-  const [password, setPassword] = useState('');
+const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin, onRegisterStaff }) => {
+  // Navigation & UI States
+  const [authMethod, setAuthMethod] = useState<'pin' | 'email' | 'register'>('pin');
+  const [selectedUser, setSelectedUser] = useState<Staff | null>(null);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Core Login States
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' | 'info' } | null>(null);
+  
+  // PIN State
+  const [pin, setPin] = useState('');
+
+  // Setup State
+  const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminPin, setNewAdminPin] = useState('');
+
+  // Staff Registration State
+  const [regStep, setRegStep] = useState(1);
+  const [regData, setRegData] = useState({
+    name: '',
+    role: 'Reception' as Staff['role'],
+    pin: '',
+    email: ''
+  });
+  const [approvingManager, setApprovingManager] = useState<Staff | null>(null);
+  const [managerPin, setManagerPin] = useState('');
+
+  // Staff Grouping
+  const superusers = staff.filter(s => s.role === 'Superuser');
+  const managers = staff.filter(s => s.role === 'Manager' || s.role === 'Superuser');
+  const employees = staff.filter(s => s.role !== 'Manager' && s.role !== 'Superuser');
+
+  const handleUserSelect = (user: Staff) => {
+    setSelectedUser(user);
+    setPin('');
+    setMessage(null);
+  };
+
+  const attemptLogin = (user: Staff) => {
+    let appRole: UserRole = 'Staff';
+    if (user.role === 'Superuser') appRole = 'Superuser';
+    else if (user.role === 'Manager') appRole = 'Manager';
+    else if (user.role === 'Maintenance') appRole = 'Contractor';
+
+    const names = user.name.split(' ');
+    const initials = names.length >= 2 
+      ? `${names[0][0]}${names[1][0]}`.toUpperCase() 
+      : user.name.substring(0, 2).toUpperCase();
+
+    onLogin({
+      id: user.id,
+      name: user.name,
+      role: appRole,
+      avatarInitials: initials
+    });
+  };
+
+  const handlePinLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin(password);
+    if (!selectedUser) return;
+
+    if (pin === selectedUser.pin) {
+      attemptLogin(selectedUser);
+    } else {
+      setMessage({ text: 'Access Denied: Invalid PIN code.', type: 'error' });
+      setPin('');
+    }
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage(null);
+    setIsLoading(true);
+
+    try {
+      const result = await loginTerminal(email, password);
+      const authenticatedEmail = result.user.email;
+
+      if (!authenticatedEmail) throw new Error("Authentication failed.");
+
+      const matchedStaff = staff.find(s => s.email?.toLowerCase() === authenticatedEmail.toLowerCase());
+
+      if (matchedStaff) {
+        attemptLogin(matchedStaff);
+      } else {
+        onLogin({
+            id: 'cloud-admin',
+            name: result.user.displayName || authenticatedEmail.split('@')[0],
+            role: 'Superuser',
+            avatarInitials: 'AD'
+        });
+      }
+    } catch (err: any) {
+      console.error("Login failed", err);
+      if (err.code === 'auth/invalid-credential') {
+        setMessage({ text: "Invalid credentials. Please verify your email and password.", type: 'error' });
+      } else {
+        setMessage({ text: "Authentication failed. Check your connection or cloud config.", type: 'error' });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newAdminName && newAdminPin.length === 4) {
+      onCreateAdmin(newAdminName, newAdminPin);
+    }
+  };
+
+  const handleStartRegistration = () => {
+    setAuthMethod('register');
+    setRegStep(1);
+    setRegData({ name: '', role: 'Reception', pin: '', email: '' });
+    setMessage(null);
+  };
+
+  const handleRegDataSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (regData.name && regData.pin.length === 4) {
+      setRegStep(2);
+    }
+  };
+
+  const handleApprovalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!approvingManager) return;
+
+    if (managerPin === approvingManager.pin) {
+      onRegisterStaff({
+        name: regData.name,
+        email: regData.email,
+        role: regData.role,
+        shift: 'TBD',
+        pin: regData.pin
+      });
+      setMessage({ text: 'Staff account created successfully!', type: 'success' });
+      setAuthMethod('pin');
+    } else {
+      setMessage({ text: 'Approval Denied: Incorrect Manager PIN.', type: 'error' });
+      setManagerPin('');
+    }
   };
 
   return (
-    <div className="h-screen w-screen bg-slate-100 flex items-center justify-center font-sans">
-      <div className="w-full max-w-xs">
-        <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-xl px-8 pt-6 pb-8 mb-4">
-          
-          <div className="text-center mb-6">
-              <img src="/logo.svg" alt="StaySync Logo" className="w-24 h-24 mx-auto mb-2" />
-              <h1 className="text-3xl font-bold text-slate-800">StaySync</h1>
-              <p className="text-slate-500">Hotel Management</p>
-          </div>
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans selection:bg-emerald-500/30">
+      
+      {/* Cinematic Background Glows */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600/10 rounded-full blur-[140px] pointer-events-none"></div>
+      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] pointer-events-none"></div>
 
-          <div className="mb-4">
-            <label className="block text-slate-700 text-sm font-bold mb-2" htmlFor="password">
-              Master Password
-            </label>
-            <input
-              className="shadow-sm appearance-none border border-slate-300 rounded-lg w-full py-3 px-4 text-slate-700 leading-tight focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-              id="password"
-              type="password"
-              placeholder="******************"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-
-          {error && <p className="text-red-500 text-xs italic mb-4">{error}</p>}
-
-          <div className="flex items-center justify-between">
-            <button
-              className="bg-emerald-600 hover:bg-emerald-700 w-full text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:shadow-outline transition-colors disabled:bg-slate-400"
-              type="submit"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Unlocking...' : 'Unlock'}
-            </button>
-          </div>
-        </form>
-        
-        <div className="text-center text-slate-500 text-xs">
-           <div className="text-slate-600/80 text-[10px] text-center font-semibold uppercase tracking-[0.2em]">
-             <p className="flex items-center justify-center gap-2">
-               <Shield size={10} className="text-slate-700" /> StaySync Security Framework v4.2
-             </p>
-             <p className="mt-2 opacity-40">Architected by Jason Ruiz • Global Terminal Auth</p>
+      {/* Brand Header */}
+      <div className="text-center mb-10 relative z-20 animate-in fade-in slide-in-from-top-4 duration-700">
+        <div className="flex items-center justify-center gap-3 mb-4">
+           <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)]">
+              <Building2 size={32} className="text-emerald-400" />
            </div>
+           <h1 className="text-4xl font-black text-white tracking-tighter">
+             Stay<span className="text-emerald-500">Sync</span>
+           </h1>
         </div>
+        <p className="text-slate-400 font-medium tracking-wide uppercase text-[10px]">Unified Terminal Access Port</p>
+      </div>
+
+      <div className="w-full max-w-md relative z-20">
+        <div className="bg-slate-900/40 backdrop-blur-2xl border border-white/10 p-8 rounded-[2.5rem] shadow-2xl overflow-hidden relative">
+          
+          {/* Status Icons */}
+          <div className="absolute top-4 right-4 text-slate-600 hover:text-emerald-400 transition-colors cursor-help">
+            <ShieldCheck size={18} />
+          </div>
+
+          {staff.length === 0 ? (
+            /* SCENARIO: INITIAL SYSTEM SETUP */
+            <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-white mb-2">Initialize System</h2>
+                <p className="text-slate-400 text-sm">Create the Master Superuser profile to begin.</p>
+              </div>
+
+              <form onSubmit={handleCreateSubmit} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Full Identity</label>
+                  <input
+                    type="text" required placeholder="Full Name"
+                    value={newAdminName} onChange={(e) => setNewAdminName(e.target.value)}
+                    className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 rounded-2xl py-3.5 px-5 text-white placeholder-slate-600 outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Master Access PIN</label>
+                  <input
+                    type="text" inputMode="numeric" required maxLength={4} pattern="\d{4}" placeholder="4-Digit Code"
+                    value={newAdminPin} onChange={(e) => setNewAdminPin(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3.5 px-5 text-white placeholder-slate-600 outline-none font-mono tracking-[1em] text-center transition-all"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={!newAdminName || newAdminPin.length < 4}
+                  className="w-full bg-white text-slate-950 hover:bg-emerald-400 font-bold py-4 rounded-2xl transition-all shadow-xl shadow-white/5 mt-4"
+                >
+                  Create Master Admin
+                </button>
+              </form>
+            </div>
+          ) : (
+            /* SCENARIO: STANDARD LOGIN / REGISTER */
+            <>
+              {authMethod === 'email' ? (
+                 /* CLOUD EMAIL LOGIN */
+                 <form onSubmit={handleEmailLogin} className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-500">
+                    <div className="text-center">
+                      <button 
+                        type="button"
+                        onClick={() => { setAuthMethod('pin'); setMessage(null); }}
+                        className="text-slate-500 text-xs hover:text-white mb-6 flex items-center justify-center gap-2 mx-auto transition-colors"
+                      >
+                        <ArrowLeft size={14} /> Back to Terminal Access
+                      </button>
+                      <h2 className="text-2xl font-bold text-white tracking-tight">Cloud Portal</h2>
+                      <p className="text-slate-500 text-sm mt-1">Authorized Administrative Login</p>
+                    </div>
+
+                    <div className="space-y-5">
+                       <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Work Email</label>
+                          <div className="relative">
+                            <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={16} />
+                            <input 
+                              type="email" required autoFocus value={email} onChange={e => setEmail(e.target.value)}
+                              className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3.5 pl-11 pr-4 text-white placeholder-slate-600 outline-none transition-all"
+                              placeholder="admin@staysync.com"
+                            />
+                          </div>
+                       </div>
+                       
+                       <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Password</label>
+                          <div className="relative">
+                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={16} />
+                            <input 
+                              type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                              className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3.5 pl-11 pr-4 text-white placeholder-slate-600 outline-none transition-all"
+                              placeholder="••••••••"
+                            />
+                          </div>
+                       </div>
+
+                       {message && (
+                          <div className={`flex items-center gap-3 p-4 rounded-2xl border text-sm animate-in fade-in slide-in-from-top-2 ${
+                            message.type === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                          }`}>
+                            <AlertCircle size={18} className="shrink-0" />
+                            {message.text}
+                          </div>
+                       )}
+
+                       <button
+                          type="submit"
+                          disabled={isLoading}
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-wait text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-3"
+                        >
+                          {isLoading ? <Loader2 className="animate-spin" size={20} /> : <><Shield size={20} /> Sign In</>}
+                        </button>
+                    </div>
+                 </form>
+              ) : authMethod === 'register' ? (
+                /* STAFF REGISTRATION WORKFLOW */
+                <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
+                  <div className="text-center">
+                    <button 
+                      type="button"
+                      onClick={() => { setAuthMethod('pin'); setRegStep(1); }}
+                      className="text-slate-500 text-xs hover:text-white mb-6 flex items-center justify-center gap-2 mx-auto transition-colors"
+                    >
+                      <ArrowLeft size={14} /> Cancel Request
+                    </button>
+                    <h2 className="text-2xl font-bold text-white tracking-tight">
+                      {regStep === 1 ? 'New Staff Request' : 'Manager Approval'}
+                    </h2>
+                    <p className="text-slate-500 text-sm mt-1">
+                      {regStep === 1 ? 'Enter your details to join' : 'Requires verification to activate'}
+                    </p>
+                  </div>
+
+                  {regStep === 1 ? (
+                    <form onSubmit={handleRegDataSubmit} className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Full Name</label>
+                        <input
+                          type="text" required placeholder="John Doe"
+                          value={regData.name} onChange={(e) => setRegData({...regData, name: e.target.value})}
+                          className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3 px-5 text-white outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Assigned Role</label>
+                        <select
+                          value={regData.role} onChange={(e) => setRegData({...regData, role: e.target.value as any})}
+                          className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3 px-5 text-white outline-none transition-all appearance-none"
+                        >
+                          <option value="Reception">Reception</option>
+                          <option value="Housekeeping">Housekeeping</option>
+                          <option value="Maintenance">Maintenance</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Personal PIN</label>
+                        <input
+                          type="password" inputMode="numeric" required maxLength={4} pattern="\d{4}" placeholder="••••"
+                          value={regData.pin} onChange={(e) => setRegData({...regData, pin: e.target.value.replace(/\D/g, '')})}
+                          className="w-full bg-slate-950/50 border border-slate-800 focus:border-emerald-500/50 rounded-2xl py-3 px-5 text-white outline-none font-mono tracking-widest text-center transition-all"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={!regData.name || regData.pin.length < 4}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl transition-all shadow-lg mt-4 flex items-center justify-center gap-2"
+                      >
+                        Request Approval <ChevronRight size={18} />
+                      </button>
+                    </form>
+                  ) : (
+                    /* MANAGER APPROVAL STEP */
+                    <form onSubmit={handleApprovalSubmit} className="space-y-6">
+                      <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                        {managers.map(manager => (
+                          <button
+                            key={manager.id}
+                            type="button"
+                            onClick={() => { setApprovingManager(manager); setManagerPin(''); setMessage(null); }}
+                            className={`w-full flex items-center justify-between p-3 rounded-2xl border transition-all ${
+                              approvingManager?.id === manager.id 
+                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' 
+                                : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
+                            }`}
+                          >
+                            <span className="font-bold">{manager.name}</span>
+                            <span className="text-[10px] uppercase font-medium">{manager.role}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {approvingManager && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                           <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
+                                {approvingManager.name.split(' ')[0]}'s Approval PIN
+                              </label>
+                              <input
+                                type="password" inputMode="numeric" required maxLength={4} value={managerPin} autoFocus
+                                onChange={(e) => setManagerPin(e.target.value.replace(/\D/g, ''))}
+                                className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-2xl py-4 text-white outline-none text-center font-mono text-2xl tracking-[1em]"
+                              />
+                           </div>
+                           
+                           {message && (
+                             <p className="text-center text-red-400 text-xs flex items-center justify-center gap-1">
+                               <AlertCircle size={14} /> {message.text}
+                             </p>
+                           )}
+
+                           <button
+                             type="submit"
+                             disabled={managerPin.length < 4}
+                             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2"
+                           >
+                             <UserCheck size={20} /> Authorize Account
+                           </button>
+                        </div>
+                      )}
+                    </form>
+                  )}
+                </div>
+              ) : !selectedUser ? (
+                /* PROFILE SELECTOR (TERMINAL MODE) */
+                <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-500">
+                  <div className="text-center">
+                    <h2 className="text-2xl font-bold text-white tracking-tight">Staff Terminal</h2>
+                    <p className="text-slate-500 text-sm mt-1">Identify your profile to unlock</p>
+                  </div>
+                  
+                  <div className="space-y-3 max-h-[380px] overflow-y-auto pr-2 custom-scrollbar">
+                     {/* System Admin Group */}
+                     {superusers.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-[10px] font-bold text-emerald-500/60 uppercase tracking-widest mb-3 ml-1">System Management</p>
+                        <div className="space-y-2">
+                          {superusers.map(user => (
+                            <button
+                              key={user.id}
+                              onClick={() => handleUserSelect(user)}
+                              className="w-full flex items-center justify-between bg-white/5 hover:bg-emerald-500/10 border border-white/5 hover:border-emerald-500/30 p-4 rounded-2xl group transition-all"
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center font-bold border border-emerald-500/20">
+                                  {user.name.charAt(0)}
+                                </div>
+                                <div className="text-left">
+                                  <p className="font-bold text-white group-hover:text-emerald-300 transition-colors">{user.name}</p>
+                                  <p className="text-[10px] text-slate-500 uppercase tracking-tighter">Superuser</p>
+                                </div>
+                              </div>
+                              <ChevronRight className="text-slate-700 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" size={20} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* General Staff Group */}
+                    <div className="mt-4">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 ml-1">Hotel Staff</p>
+                      <div className="grid grid-cols-1 gap-2">
+                        {[...managers.filter(m => m.role !== 'Superuser'), ...employees].map(user => (
+                          <button
+                            key={user.id}
+                            onClick={() => handleUserSelect(user)}
+                            className="w-full flex items-center justify-between bg-white/5 hover:bg-blue-500/10 border border-white/5 hover:border-blue-500/20 p-3.5 rounded-2xl group transition-all"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 bg-slate-800 text-slate-400 rounded-xl flex items-center justify-center font-bold border border-white/5">
+                                {user.name.charAt(0)}
+                              </div>
+                              <div className="text-left">
+                                <p className="font-bold text-slate-200 group-hover:text-white transition-colors">{user.name}</p>
+                                <p className="text-[10px] text-slate-500">{user.role}</p>
+                              </div>
+                            </div>
+                            <ChevronRight className="text-slate-800 group-hover:text-blue-400 transition-all" size={16} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Footer Access Actions */}
+                  <div className="pt-6 border-t border-white/5 text-center space-y-4">
+                     <div className="grid grid-cols-2 gap-3">
+                        <button 
+                          onClick={() => { setAuthMethod('email'); setMessage(null); }}
+                          className="text-[10px] text-slate-400 hover:text-white hover:bg-white/5 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border border-white/5"
+                        >
+                          <Mail size={14} className="text-emerald-400" /> Cloud Admin
+                        </button>
+                        <button 
+                          onClick={handleStartRegistration}
+                          className="text-[10px] text-slate-400 hover:text-white hover:bg-white/5 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border border-white/5"
+                        >
+                          <UserPlus size={14} className="text-blue-400" /> New Staff
+                        </button>
+                     </div>
+
+                     <button 
+                       onClick={() => setShowRecovery(!showRecovery)}
+                       className="text-[10px] font-bold text-slate-600 hover:text-slate-400 uppercase tracking-widest transition-colors"
+                     >
+                       Recovery Mode
+                     </button>
+
+                     {showRecovery && (
+                       <div className="mt-4 p-5 bg-slate-950/80 rounded-3xl border border-white/5 text-left animate-in fade-in zoom-in-95 duration-300 shadow-2xl">
+                         <div className="flex items-center gap-2 mb-3 text-amber-500">
+                            <Unlock size={14} />
+                            <h4 className="font-bold text-xs uppercase tracking-wider">Access Recovery</h4>
+                         </div>
+                         <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                           {staff.map(s => (
+                             <div key={s.id} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
+                               <div>
+                                  <p className="text-xs font-bold text-slate-200">{s.name}</p>
+                                  <p className="text-[9px] text-slate-500">{s.role}</p>
+                               </div>
+                               <span className="font-mono text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg">{s.pin}</span>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
+                  </div>
+                </div>
+              ) : (
+                /* PIN ENTRY VIEW */
+                <form onSubmit={handlePinLogin} className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                  <div className="text-center">
+                    <button 
+                      type="button"
+                      onClick={() => { setSelectedUser(null); setPin(''); setMessage(null); }}
+                      className="text-slate-500 text-xs hover:text-white mb-8 flex items-center justify-center gap-2 mx-auto transition-colors"
+                    >
+                      <ArrowLeft size={14} /> Back to Identity List
+                    </button>
+                    
+                    <div className="w-24 h-24 bg-emerald-500/10 text-emerald-400 rounded-[2rem] flex items-center justify-center mx-auto mb-6 border border-emerald-500/20 shadow-[0_0_50px_-10px_rgba(16,185,129,0.2)]">
+                      <Fingerprint size={48} />
+                    </div>
+                    <h2 className="text-2xl font-bold text-white tracking-tight">Hello, {selectedUser.name.split(' ')[0]}</h2>
+                    <p className="text-slate-500 text-sm mt-1">Unlock Terminal Access</p>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="relative">
+                      <input
+                        type="password" inputMode="numeric" maxLength={4} value={pin} autoFocus
+                        onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setMessage(null); }}
+                        placeholder="••••"
+                        className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-3xl py-6 text-white placeholder-slate-800 outline-none text-center font-mono text-4xl tracking-[0.5em] transition-all shadow-inner"
+                      />
+                    </div>
+
+                    {message && (
+                      <div className="flex items-center justify-center gap-2 text-red-400 text-xs bg-red-500/10 p-3 rounded-2xl border border-red-500/20 animate-in fade-in slide-in-from-top-1">
+                        <AlertCircle size={14} />
+                        {message.text}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={pin.length < 4}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-emerald-900/40 flex items-center justify-center gap-3"
+                    >
+                      <ShieldCheck size={20} /> Authorize Access
+                    </button>
+                  </div>
+                </form>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Footer Branding */}
+      <div className="mt-12 text-slate-600 text-[10px] text-center font-bold uppercase tracking-[0.2em] relative z-20">
+        <p className="flex items-center justify-center gap-2">
+          <Shield size={10} className="text-slate-700" /> StaySync Security Framework v4.2
+        </p>
+        <p className="mt-2 opacity-40">Architected by Jason Ruiz • Global Terminal Auth</p>
       </div>
     </div>
   );

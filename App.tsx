@@ -15,6 +15,7 @@ import FeatureRequestPanel from './components/FeatureRequestPanel';
 import TerminalAuth from './components/TerminalAuth';
 import DailyReport from './components/DailyReport';
 import CheckInCheckOutPanel from './components/CheckInCheckOutPanel';
+import BookingModal from './components/BookingModal';
 import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest, AttendanceLog, AttendanceAction, DNRRecord } from './types';
 import { StorageService } from './services/storage';
 import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
@@ -371,7 +372,7 @@ const App: React.FC = () => {
       case 'check-in-out': return <CheckInCheckOutPanel guests={guests} rooms={rooms} onUpdateGuest={handleUpdateGuest} onUpdateRoom={handleUpdateRoom} />;
       case 'rooms': return <RoomList rooms={rooms} onStatusChange={handleRoomStatusChange} onAddRoom={handleAddRoom} onUpdateRoom={loadData} onDeleteRoom={loadData} onBookRoom={(num) => setBookingRequest({ isOpen: true, roomNumber: num })} onCheckOut={handleCheckOutGuest} isManager={currentUser?.role !== 'Staff'} />;
       case 'accounting': return <Accounting transactions={transactions} guests={[]} rooms={[]} />;
-      case 'guests': return <GuestList guests={guests} rooms={rooms} transactions={transactions} history={history} dnrRecords={dnrRecords} onAddGuest={handleAddGuest} onUpdateGuest={handleUpdateGuest} onAddPayment={handleAddPayment} onCheckOut={handleCheckOutGuest} onAddDNR={loadData} onDeleteDNR={loadData} userRole={currentUser?.role || 'Staff'} externalBookingRequest={bookingRequest} onClearExternalRequest={() => setBookingRequest({ isOpen: false })} />;
+      case 'guests': return <GuestList guests={guests} rooms={rooms} transactions={transactions} history={history} dnrRecords={dnrRecords} onAddGuest={handleAddGuest} onUpdateGuest={handleUpdateGuest} onAddPayment={handleAddPayment} onCheckOut={handleCheckOutGuest} onAddDNR={loadData} onDeleteDNR={loadData} userRole={currentUser?.role || 'Staff'} />;
       case 'staff': return <StaffList staff={staff} attendanceLogs={attendanceLogs} currentUserId={currentUser?.id} userRole={currentUser?.role || 'Staff'} onAddStaff={loadData} onDeleteStaff={loadData} onUpdateStatus={loadData} onAttendanceAction={handleAttendanceAction} onUpdateAttendanceLog={handleUpdateAttendanceLog} />;
       case 'maintenance': return <MaintenancePanel tickets={maintenance} rooms={rooms} userRole={currentUser?.role || 'Staff'} onAddTicket={loadData} onResolveTicket={loadData} />;
       case 'documents': return <DocumentCenter documents={documents} onAddDocument={loadData} onDeleteDocument={loadData} userRole={currentUser?.role || 'Staff'} />;
@@ -424,6 +425,13 @@ const App: React.FC = () => {
         {toast.type === 'error' ? <AlertTriangle className="text-red-400" /> : <CheckCircle className="text-emerald-400" />}
         <div><p className="font-bold text-sm">{toast.message}</p><p className="text-xs text-slate-400">{toast.subtext}</p></div>
       </div>}
+      <BookingModal 
+        isOpen={bookingRequest.isOpen}
+        onClose={() => setBookingRequest({ isOpen: false })}
+        onBook={handleAddGuest}
+        rooms={rooms}
+        initialRoomNumber={bookingRequest.roomNumber}
+      />
     </div>
   );
 };

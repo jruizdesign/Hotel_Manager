@@ -43,7 +43,7 @@ const App: React.FC = () => {
   const [dnrRecords, setDnrRecords] = useState<DNRRecord[]>([]);
 
   const [toast, setToast] = useState<{ message: string; subtext?: string; type?: 'success' | 'error' } | null>(null);
-  const [bookingRequest, setBookingRequest] = useState<{ isOpen: boolean, roomNumber?: string }>({ isOpen: false });
+  const [bookingRequest, setBookingRequest] = useState<{ isOpen: boolean }>({ isOpen: false });
 
   useEffect(() => {
     const initApp = async () => {
@@ -256,25 +256,18 @@ const App: React.FC = () => {
   };
 
   const handleAddGuest = (newGuestData: Omit<Guest, 'id'>): boolean => {
-    const targetRoomIndex = rooms.findIndex(r => r.number === newGuestData.roomNumber);
-    if (targetRoomIndex === -1) return false;
-    const targetRoom = rooms[targetRoomIndex];
-    if (targetRoom.status !== RoomStatus.AVAILABLE) return false;
-
-    const newGuest: Guest = { ...newGuestData, id: Date.now().toString(), balance: targetRoom.price };
+    const newGuest: Guest = { ...newGuestData, id: Date.now().toString(), balance: 0 };
     const updatedGuests = [...guests, newGuest];
     setGuests(updatedGuests);
     StorageService.saveGuests(updatedGuests);
 
-    if (newGuestData.status === 'Checked In') {
-      const updatedRooms = [...rooms];
-      updatedRooms[targetRoomIndex] = { ...targetRoom, status: RoomStatus.OCCUPIED, guestId: newGuest.id };
-      setRooms(updatedRooms);
-      StorageService.saveRooms(updatedRooms);
-    }
+    // Invoice generation is commented out as it should happen at check-in
+    // const targetRoom = rooms.find(r => r.number === newGuestData.roomNumber);
+    // if (targetRoom) {
+    //   generateInvoice(newGuest, targetRoom);
+    // }
 
-    generateInvoice(newGuest, targetRoom);
-    setToast({ message: 'Booking Successful', subtext: 'Invoice generated and synced to storage.' });
+    setToast({ message: 'Reservation Confirmed', subtext: 'Guest added to reservation list.' });
     return true;
   };
 
@@ -321,14 +314,14 @@ const App: React.FC = () => {
     }
 
     const updatedRooms = rooms.map(r => r.id === roomId ? { ...r, status: RoomStatus.DIRTY, guestId: undefined } : r);
-    const updatedGuests = guests.map(g => g.id === guest.id ? { ...g, status: 'Checked Out' as const } : g);
+    const updatedGuests = guests.map(g => g.id === guest.id ? { ...g, status: 'Checked Out' as const, roomNumber: undefined } : g);
     
     const newHistory: BookingHistory = {
       id: Date.now().toString(),
       guestId: guest.id,
       checkIn: guest.checkIn,
       checkOut: guest.checkOut || new Date().toISOString().split('T')[0], 
-      roomNumber: guest.roomNumber,
+      roomNumber: targetRoom.number,
       roomType: targetRoom.type,
       totalAmount: targetRoom.price,
       status: 'Completed'
@@ -370,7 +363,7 @@ const App: React.FC = () => {
       case 'dashboard': return <Dashboard rooms={rooms} guests={guests} maintenance={maintenance} transactions={transactions} />;
       case 'reports': return <DailyReport guests={guests} rooms={rooms} transactions={transactions} />;
       case 'check-in-out': return <CheckInCheckOutPanel guests={guests} rooms={rooms} onUpdateGuest={handleUpdateGuest} onUpdateRoom={handleUpdateRoom} />;
-      case 'rooms': return <RoomList rooms={rooms} onStatusChange={handleRoomStatusChange} onAddRoom={handleAddRoom} onUpdateRoom={loadData} onDeleteRoom={loadData} onBookRoom={(num) => setBookingRequest({ isOpen: true, roomNumber: num })} onCheckOut={handleCheckOutGuest} isManager={currentUser?.role !== 'Staff'} />;
+      case 'rooms': return <RoomList rooms={rooms} guests={guests} onStatusChange={handleRoomStatusChange} onAddRoom={handleAddRoom} onUpdateRoom={loadData} onDeleteRoom={loadData} onBookRoom={() => setBookingRequest({ isOpen: true })} onCheckOut={handleCheckOutGuest} isManager={currentUser?.role !== 'Staff'} />;
       case 'accounting': return <Accounting transactions={transactions} guests={[]} rooms={[]} />;
       case 'guests': return <GuestList guests={guests} rooms={rooms} transactions={transactions} history={history} dnrRecords={dnrRecords} onAddGuest={handleAddGuest} onUpdateGuest={handleUpdateGuest} onAddPayment={handleAddPayment} onCheckOut={handleCheckOutGuest} onAddDNR={loadData} onDeleteDNR={loadData} userRole={currentUser?.role || 'Staff'} />;
       case 'staff': return <StaffList staff={staff} attendanceLogs={attendanceLogs} currentUserId={currentUser?.id} userRole={currentUser?.role || 'Staff'} onAddStaff={loadData} onDeleteStaff={loadData} onUpdateStatus={loadData} onAttendanceAction={handleAttendanceAction} onUpdateAttendanceLog={handleUpdateAttendanceLog} />;
@@ -429,8 +422,6 @@ const App: React.FC = () => {
         isOpen={bookingRequest.isOpen}
         onClose={() => setBookingRequest({ isOpen: false })}
         onBook={handleAddGuest}
-        rooms={rooms}
-        initialRoomNumber={bookingRequest.roomNumber}
       />
     </div>
   );

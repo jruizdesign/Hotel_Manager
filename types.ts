@@ -28,8 +28,8 @@ export interface Guest {
   email: string;
   phone: string;
   checkIn: string;
-  checkOut?: string; // Optional for VIPs
-  roomNumber: string;
+  checkOut?: string; // Optional for VIPs or indefinite stays
+  roomNumber?: string; // Optional, assigned at check-in
   vip: boolean;
   status: 'Checked In' | 'Reserved' | 'Checked Out';
   balance: number; // Positive means they owe money, 0 means paid

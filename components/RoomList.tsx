@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Room, RoomStatus, RoomType } from '../types';
+import { Room, RoomStatus, RoomType, Guest } from '../types';
 import { CheckCircle, XCircle, PenTool, AlertOctagon, Plus, Trash2, X, CalendarPlus, Pencil, LogOut, Filter } from 'lucide-react';
+import GuestDetailsModal from './GuestDetailsModal';
 
 interface RoomListProps {
   rooms: Room[];
+  guests: Guest[];
   onStatusChange: (roomId: string, newStatus: RoomStatus) => void;
   onAddRoom: (room: Omit<Room, 'id' | 'status'>) => void;
   onUpdateRoom: (room: Room) => void;
@@ -13,9 +15,12 @@ interface RoomListProps {
   isManager: boolean;
 }
 
-const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, onUpdateRoom, onDeleteRoom, onBookRoom, onCheckOut, isManager }) => {
+const RoomList: React.FC<RoomListProps> = ({ rooms, guests, onStatusChange, onAddRoom, onUpdateRoom, onDeleteRoom, onBookRoom, onCheckOut, isManager }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isGuestModalOpen, setIsGuestModalOpen] = useState(false);
+  const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [filterType, setFilterType] = useState<string>('All');
   
   // Form State
@@ -60,6 +65,17 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
     setIsEditMode(true);
     setFormData({ ...room });
     setIsModalOpen(true);
+  };
+
+  const handleRoomClick = (room: Room) => {
+    if (room.status === RoomStatus.OCCUPIED && room.guestId) {
+      const guest = guests.find(g => g.id === room.guestId);
+      if (guest) {
+        setSelectedGuest(guest);
+        setSelectedRoom(room);
+        setIsGuestModalOpen(true);
+      }
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -125,7 +141,7 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {filteredRooms.length > 0 ? (
           filteredRooms.map((room) => (
-            <div key={room.id} className={`relative p-5 rounded-xl border-2 transition-all hover:shadow-md ${getStatusColor(room.status)}`}>
+            <div key={room.id} className={`relative p-5 rounded-xl border-2 transition-all hover:shadow-md ${getStatusColor(room.status)}`} onClick={() => handleRoomClick(room)}>
               
               {/* Top Actions: Edit / Delete (Manager Only) */}
               {isManager && (
@@ -310,6 +326,13 @@ const RoomList: React.FC<RoomListProps> = ({ rooms, onStatusChange, onAddRoom, o
           </div>
         </div>
       )}
+
+      <GuestDetailsModal 
+        isOpen={isGuestModalOpen} 
+        onClose={() => setIsGuestModalOpen(false)} 
+        guest={selectedGuest} 
+        room={selectedRoom}
+      />
     </div>
   );
 };

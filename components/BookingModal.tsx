@@ -22,6 +22,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook, ro
     status: 'Reserved',
     balance: 0
   });
+  const [isIndefinite, setIsIndefinite] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -36,12 +37,17 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook, ro
             status: 'Reserved',
             balance: 0
         });
+        setIsIndefinite(false);
     }
   }, [isOpen, initialRoomNumber]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (onBook(formData)) {
+    const dataToSubmit = { ...formData };
+    if (isIndefinite || (formData.vip && !formData.checkOut)) {
+      delete dataToSubmit.checkOut;
+    }
+    if (onBook(dataToSubmit)) {
       onClose();
     } else {
       alert("Room unavailable or error creating booking.");
@@ -80,12 +86,23 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook, ro
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Check Out</label>
-                <input type="date" required className="w-full" value={formData.checkOut} onChange={e => setFormData({ ...formData, checkOut: e.target.value })} />
+                <input type="date" required={!isIndefinite && !formData.vip} disabled={isIndefinite} className="w-full" value={isIndefinite ? '' : formData.checkOut || ''} onChange={e => setFormData({ ...formData, checkOut: e.target.value })} />
               </div>
             </div>
             <div className="col-span-2 flex items-center gap-2">
               <input type="checkbox" id="vip-guest" checked={formData.vip} onChange={e => setFormData({ ...formData, vip: e.target.checked })} />
               <label htmlFor="vip-guest" className="font-medium text-slate-700">VIP Guest</label>
+            </div>
+            <div className="col-span-2 flex items-center gap-2">
+              <input type="checkbox" id="indefinite-stay" checked={isIndefinite} onChange={e => {
+                setIsIndefinite(e.target.checked);
+                if (e.target.checked) {
+                  setFormData(f => ({ ...f, checkOut: undefined }));
+                } else {
+                  setFormData(f => ({ ...f, checkOut: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0] }));
+                }
+              }} />
+              <label htmlFor="indefinite-stay" className="font-medium text-slate-700">Indefinite Stay</label>
             </div>
           </div>
           <button type="submit" className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold hover:bg-emerald-700 transition-colors shadow-sm">Confirm Booking</button>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Transaction, Guest, Room, RoomStatus } from '../types';
-import { Download, TrendingUp, TrendingDown, FileText, DollarSign, Users, Calendar, CreditCard, Search, Filter } from 'lucide-react';
+import { Transaction, Guest, Room } from '../types';
+import { Download, TrendingUp, TrendingDown, DollarSign, CreditCard, Search, Filter } from 'lucide-react';
 
 interface AccountingProps {
   transactions: Transaction[];
@@ -32,7 +32,8 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
 
   // --- Helpers ---
 
-  const getRoomPrice = (roomNumber: string) => {
+  const getRoomPrice = (roomNumber?: string) => {
+    if (!roomNumber) return 0;
     const room = rooms.find(r => r.number === roomNumber);
     return room ? room.price : 0;
   };
@@ -226,16 +227,19 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-medium">#{guest.roomNumber}</td>
+                      <td className="px-6 py-4 font-medium">
+                        {guest.roomNumber ? `#${guest.roomNumber}` : <span className="text-slate-400">Not Assigned</span>}
+                      </td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          guest.status === 'Checked In' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                          guest.status === 'Checked In' ? 'bg-emerald-100 text-emerald-700' :
+                          guest.status === 'Reserved' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
                         }`}>
                           {guest.status}
                         </span>
                         {isVip && !guest.checkOut && <div className="text-[10px] text-slate-400 mt-1">Indefinite Stay</div>}
                       </td>
-                      <td className="px-6 py-4 text-slate-500">${dailyRate}/night</td>
+                      <td className="px-6 py-4 text-slate-500">{dailyRate > 0 ? `$${dailyRate}/night` : '-'}</td>
                       <td className="px-6 py-4 text-right">
                         {isVip && isUpToDate ? (
                           <div>

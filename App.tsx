@@ -21,7 +21,6 @@ import { StorageService } from './services/storage';
 import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
 import { Wrench, Loader2, Mail, AlertTriangle, FileText, CheckCircle, Menu } from 'lucide-react'; // Added Menu icon
 import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
-import { SpeedInsights } from "@vercel/speed-insights/next"
 
 const App: React.FC = () => {
   const [terminalUser, setTerminalUser] = useState<any | null>(null);
@@ -260,13 +259,6 @@ const App: React.FC = () => {
     const updatedGuests = [...guests, newGuest];
     setGuests(updatedGuests);
     StorageService.saveGuests(updatedGuests);
-
-    // Invoice generation is commented out as it should happen at check-in
-    // const targetRoom = rooms.find(r => r.number === newGuestData.roomNumber);
-    // if (targetRoom) {
-    //   generateInvoice(newGuest, targetRoom);
-    // }
-
     setToast({ message: 'Reservation Confirmed', subtext: 'Guest added to reservation list.' });
     return true;
   };
@@ -358,6 +350,14 @@ const App: React.FC = () => {
     setToast({ message: 'Status Logged', subtext: action.replace('_', ' ') });
   };
 
+  const handleSetupComplete = async (newRooms: Omit<Room, 'id' | 'status'>[]) => {
+    const roomsWithIds = newRooms.map(r => ({ ...r, id: Math.random().toString(36).substr(2, 9), status: RoomStatus.AVAILABLE }));
+    setRooms(roomsWithIds);
+    await StorageService.saveRooms(roomsWithIds);
+    // Reload data to ensure everything is synced
+    await loadData();
+  };
+
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard': return <Dashboard rooms={rooms} guests={guests} maintenance={maintenance} transactions={transactions} />;
@@ -378,6 +378,12 @@ const App: React.FC = () => {
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-emerald-500"><Loader2 className="animate-spin" /></div>;
   if (!terminalUser) return <TerminalAuth />;
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-emerald-600" /></div>;
+  
+  // Show SetupWizard if no rooms are configured
+  if (rooms.length === 0) {
+    return <SetupWizard onComplete={handleSetupComplete} />;
+  }
+
   if (!currentUser) return <LoginScreen staff={staff} onLogin={handleLogin} onCreateAdmin={handleCreateAdmin} onRegisterStaff={handleRegisterStaff} />;
 
   return (

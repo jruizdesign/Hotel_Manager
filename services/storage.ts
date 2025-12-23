@@ -1,8 +1,9 @@
 import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest, AttendanceLog, DNRRecord } from '../types';
 import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
 import { db } from './db';
-import { initializeFirebase, getFirebaseDB } from './firebase';
+import { initializeFirebase, getFirebaseDB, getFirebaseStorage } from './firebase';
 import { collection, getDocs, doc, writeBatch, Firestore } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 const SETTINGS_ID = 'app_settings';
 
@@ -99,12 +100,7 @@ export const StorageService = {
     if (settings.dataSource === 'Cloud') {
       try {
         const cloudData = await getCloudData<T>(collectionName);
-        
-        if (collectionName === 'staff' || collectionName === 'guests') {
-          return cloudData;
-        }
         return cloudData;
-
       } catch (error) {
         console.error(`Cloud fetch failed for ${collectionName}:`, error);
         return []; 
@@ -158,6 +154,24 @@ export const StorageService = {
   saveFeatureRequests: (features: FeatureRequest[]) => StorageService.saveData(db.features, features, 'features'),
   getDNRRecords: (): Promise<DNRRecord[]> => StorageService.getOrSeedData(db.dnr, [], 'dnr'),
   saveDNRRecords: (records: DNRRecord[]) => StorageService.saveData(db.dnr, records, 'dnr'),
+
+  uploadFile: async (base64Data: string, fileName: string): Promise<string> => {
+    const storage = getFirebaseStorage();
+    if (!storage) {
+        // Fallback for local mode: just return the base64 data
+        return base64Data;
+    }
+
+    try {
+        const storageRef = ref(storage, `documents/${Date.now()}_${fileName}`);
+        await uploadString(storageRef, base64Data, 'data_url');
+        const downloadURL = await getDownloadURL(storageRef);
+        return downloadURL;
+    } catch (error) {
+        console.error("Firebase Upload Error:", error);
+        return base64Data; // Fallback to base64
+    }
+  },
 
   clearAllData: async () => {
     await Promise.all([

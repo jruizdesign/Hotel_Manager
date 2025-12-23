@@ -11,11 +11,13 @@ import {
   User
 } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
+import { getStorage, FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { AppSettings } from "../types";
 
 let dbInstance: Firestore | null = null;
 let authInstance: Auth | null = null;
+let storageInstance: FirebaseStorage | null = null;
 let appInstance: FirebaseApp | null = null;
 
 // Manual subscribers to handle "Offline/Mock" login state updates
@@ -34,6 +36,7 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
     appInstance = getApp();
     dbInstance = getFirestore(appInstance);
     authInstance = getAuth(appInstance);
+    storageInstance = getStorage(appInstance);
     return dbInstance;
   }
 
@@ -42,8 +45,6 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
 
     // Initialize App Check if configured
     if (settings.recaptchaSiteKey) {
-        // Enable debug token in development environment if needed
-        // Cast import.meta to any to avoid TS error about 'env' property
         if ((import.meta as any).env?.DEV) {
             (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
         }
@@ -56,6 +57,7 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
 
     dbInstance = getFirestore(appInstance);
     authInstance = getAuth(appInstance);
+    storageInstance = getStorage(appInstance);
     return dbInstance;
   } catch (error) {
     console.error("Error initializing Firebase:", error);
@@ -65,6 +67,10 @@ export const initializeFirebase = (settings: AppSettings): Firestore | null => {
 
 export const getFirebaseDB = (): Firestore | null => {
   return dbInstance;
+};
+
+export const getFirebaseStorage = (): FirebaseStorage | null => {
+  return storageInstance;
 };
 
 // --- Mock Auth Helpers ---
@@ -108,12 +114,10 @@ const createMockUserObject = (data: any): any => ({
 // --- Authentication Exports ---
 
 export const loginTerminal = async (email: string, pass: string) => {
-    // 1. LIVE MODE: If Firebase is initialized, STRICTLY use Firebase.
     if (authInstance) {
         return await signInWithEmailAndPassword(authInstance, email, pass);
     }
 
-    // 2. OFFLINE / DEMO MODE
     if (email === 'admin@hotel.com' && pass === 'password123') {
         const mockUser = createMockUserObject({
             uid: 'offline-admin-123',
@@ -125,7 +129,6 @@ export const loginTerminal = async (email: string, pass: string) => {
         return { user: mockUser };
     }
 
-    // 3. OFFLINE: Check local mock storage
     const localUsers = getLocalUsers();
     const found = localUsers.find((u: any) => u.email === email && u.password === pass);
     
@@ -139,13 +142,10 @@ export const loginTerminal = async (email: string, pass: string) => {
 };
 
 export const registerTerminalUser = async (email: string, pass: string) => {
-    // 1. LIVE MODE
     if (authInstance) {
         return await createUserWithEmailAndPassword(authInstance, email, pass);
     }
 
-    // 2. OFFLINE MODE
-    // Simulate Registration in Local Storage
     const localUsers = getLocalUsers();
     if (localUsers.find((u: any) => u.email === email)) {
             throw new Error("Email already in use (Offline Mode).");
@@ -173,10 +173,7 @@ export const changeUserPassword = async (newPassword: string) => {
 };
 
 export const logoutTerminal = async () => {
-    // 1. Clear local subscribers (logs out offline user)
     authSubscribers.forEach(cb => cb(null));
-
-    // 2. Sign out of Firebase if active
     if (!authInstance) return;
     return await signOut(authInstance);
 };
@@ -189,15 +186,12 @@ export const resetTerminalPassword = async (email: string) => {
 };
 
 export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {
-    // Register the subscriber
     authSubscribers.push(callback);
     
-    // If not initialized yet, we check if firebase is already active globally
     if (!authInstance && getApps().length > 0) {
         authInstance = getAuth(getApp());
     }
     
-    // If Firebase is active, hook up the real listener
     if (authInstance) {
         const unsubscribeFirebase = onAuthStateChanged(authInstance, (user) => {
             callback(user);
@@ -209,8 +203,6 @@ export const subscribeToAuthChanges = (callback: (user: User | null) => void) =>
         };
     }
 
-    // If no Firebase, we just wait for manual events via authSubscribers
-    // Initial state is null (logged out)
     callback(null);
 
     return () => {

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StoredDocument } from '../types';
-import { FileText, Upload, Trash2, Download, Search, Filter, File as FileIcon, X, CheckCircle2, Camera, ScanLine, Printer, Clipboard, ImagePlus } from 'lucide-react';
+import { FileText, Upload, Trash2, Download, Search, Filter, File as FileIcon, X, CheckCircle2, Camera, ScanLine, Printer, Clipboard, ImagePlus, Loader2, Sparkles } from 'lucide-react';
+import { analyzeDocument } from '../services/geminiService';
+import { StorageService } from '../services/storage';
 
 interface DocumentCenterProps {
   documents: StoredDocument[];
@@ -12,6 +14,7 @@ interface DocumentCenterProps {
 const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocument, onDeleteDocument, userRole }) => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -51,31 +54,53 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
     return () => window.removeEventListener('paste', handleGlobalPaste);
   }, [isUploadModalOpen]);
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     if (file.size > 5 * 1024 * 1024) { // 5MB limit
       alert("File size exceeds 5MB limit.");
       return;
     }
 
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
+      const base64Data = reader.result as string;
       setUploadForm(prev => ({
         ...prev,
-        fileData: reader.result as string,
+        fileData: base64Data,
         fileType: file.type,
         fileName: file.name,
         title: prev.title || file.name.split('.')[0]
       }));
-      // If modal isn't open, open it (for drag-drop cases outside modal)
+      
       setIsUploadModalOpen(true);
+      
+      // Auto-analyze if it's an image
+      if (file.type.startsWith('image/')) {
+        await handleAIAnalysis(base64Data);
+      }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleAIAnalysis = async (base64: string) => {
+    setIsAnalyzing(true);
+    try {
+      const analysis = await analyzeDocument(base64);
+      setUploadForm(prev => ({
+        ...prev,
+        title: analysis.title,
+        category: analysis.category as any,
+        description: analysis.description + (analysis.extractedText ? `\n\nExtracted Text: ${analysis.extractedText.substring(0, 200)}...` : '')
+      }));
+    } catch (error) {
+      console.error("AI Analysis failed", error);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
-    // Reset inputs so same file can be selected again
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (scannerInputRef.current) scannerInputRef.current.value = '';
   };
@@ -97,25 +122,34 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
       alert("No image found in clipboard. Try copying an image first.");
     } catch (err) {
       console.error("Clipboard read failed", err);
-      // Fallback: Just focus the area and ask user to press Ctrl+V
       alert("Please press Ctrl+V to paste the image.");
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadForm.fileData) return;
 
-    onAddDocument({
-      title: uploadForm.title,
-      category: uploadForm.category,
-      description: uploadForm.description,
-      fileData: uploadForm.fileData,
-      fileType: uploadForm.fileType,
-    });
+    setIsAnalyzing(true);
+    try {
+      // Upload to Firebase Storage first
+      const fileUrl = await StorageService.uploadFile(uploadForm.fileData, uploadForm.fileName);
+      
+      onAddDocument({
+        title: uploadForm.title,
+        category: uploadForm.category,
+        description: uploadForm.description,
+        fileData: fileUrl, // Now storing the URL (cloud or base64 fallback)
+        fileType: uploadForm.fileType,
+      });
 
-    setIsUploadModalOpen(false);
-    setUploadForm({ title: '', category: 'Other', description: '', fileData: '', fileType: '', fileName: '' });
+      setIsUploadModalOpen(false);
+      setUploadForm({ title: '', category: 'Other', description: '', fileData: '', fileType: '', fileName: '' });
+    } catch (error) {
+      alert("Failed to save document.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const startCamera = async () => {
@@ -143,11 +177,10 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
     setIsScanning(false);
   };
 
-  const captureImage = () => {
+  const captureImage = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      // Set canvas dimensions to match video stream
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
@@ -155,30 +188,32 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const fileName = `Scan_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.jpg`;
         
-        // Populate upload form
         setUploadForm(prev => ({
           ...prev,
           fileData: dataUrl,
           fileType: 'image/jpeg',
-          fileName: `Scan_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.jpg`,
+          fileName: fileName,
           title: prev.title || `Scanned Doc ${new Date().toLocaleDateString()}`
         }));
         
         stopCamera();
         setIsUploadModalOpen(true);
+        await handleAIAnalysis(dataUrl);
       }
     }
   };
 
   const filteredDocs = documents.filter(doc => {
-    const matchesSearch = doc.title.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = doc.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (doc.description && doc.description.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesFilter = filterCategory === 'All' || doc.category === filterCategory;
     return matchesSearch && matchesFilter;
   });
 
   const formatSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
+    if (!bytes) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -202,25 +237,23 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <FileText className="text-emerald-600" /> Document Center
           </h2>
-          <p className="text-sm text-slate-500">Securely store and manage hotel documents.</p>
+          <p className="text-sm text-slate-500">Securely store and manage hotel documents with AI assistance.</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-none">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
              <input 
                type="text" 
-               placeholder="Search docs..." 
+               placeholder="Search docs & text..." 
                value={searchTerm}
                onChange={e => setSearchTerm(e.target.value)}
                className="pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none w-full sm:w-64"
              />
           </div>
           
-          {/* Scanner / Device Button */}
           <button 
             onClick={() => scannerInputRef.current?.click()}
             className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
-            title="Import from connected scanner or device"
           >
             <Printer size={18} /> Scan from Device
             <input 
@@ -232,7 +265,6 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
              />
           </button>
 
-          {/* Camera Button */}
           <button 
             onClick={startCamera}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm whitespace-nowrap"
@@ -288,7 +320,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                          </div>
                          <div>
                             <p className="font-bold text-slate-800">{doc.title}</p>
-                            <p className="text-xs text-slate-500 max-w-[200px] truncate">{doc.description || doc.fileType}</p>
+                            <p className="text-xs text-slate-500 max-w-[300px] truncate">{doc.description || doc.fileType}</p>
                          </div>
                       </div>
                     </td>
@@ -303,9 +335,10 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                        <div className="flex items-center justify-end gap-2">
                           <a 
                             href={doc.fileData} 
-                            download={doc.title}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                            title="Download"
+                            title="View / Download"
                           >
                             <Download size={18} />
                           </a>
@@ -347,7 +380,6 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                  </div>
               </div>
 
-              {/* Scanning Grid Overlay */}
               <div className="absolute inset-0 pointer-events-none opacity-30">
                  <div className="absolute top-1/4 bottom-1/4 left-1/4 right-1/4 border-2 border-emerald-500 rounded-lg"></div>
                  <div className="w-full h-full border-8 border-black/20"></div>
@@ -357,14 +389,12 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                  <button 
                    onClick={stopCamera}
                    className="p-3 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
-                   title="Cancel Scan"
                  >
                    <X size={24} />
                  </button>
                  <button 
                    onClick={captureImage}
                    className="p-5 rounded-full bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/50 transition-transform active:scale-95 border-4 border-emerald-800"
-                   title="Capture Document"
                  >
                    <ScanLine size={32} />
                  </button>
@@ -379,7 +409,10 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
              <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-               <h3 className="text-lg font-bold text-slate-800">Add Document</h3>
+               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                 {isAnalyzing ? <Sparkles className="text-emerald-500 animate-pulse" size={18} /> : null}
+                 {isAnalyzing ? "AI is analyzing..." : "Add Document"}
+               </h3>
                <button onClick={() => setIsUploadModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                  <X size={20} />
                </button>
@@ -388,9 +421,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
              <form onSubmit={handleSubmit} className="p-6 space-y-4">
                <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">File Source</label>
-                  
-                  {/* File Drop / Action Area */}
-                  <div className="border-2 border-dashed rounded-lg p-6 text-center transition-colors border-slate-300 hover:border-emerald-400 hover:bg-slate-50 relative group">
+                  <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isAnalyzing ? 'border-emerald-400 bg-emerald-50/30' : 'border-slate-300 hover:border-emerald-400 hover:bg-slate-50'} relative group`}>
                      {uploadForm.fileData ? (
                         <div className="flex flex-col items-center">
                            {uploadForm.fileType.startsWith('image/') ? (
@@ -398,14 +429,24 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                            ) : (
                              <CheckCircle2 className="mx-auto mb-2 text-emerald-600" size={32} />
                            )}
+                           {isAnalyzing && (
+                              <div className="absolute inset-0 bg-emerald-50/60 backdrop-blur-[1px] flex items-center justify-center rounded-lg">
+                                 <div className="flex flex-col items-center gap-2 text-emerald-700">
+                                    <Loader2 className="animate-spin" size={32} />
+                                    <span className="text-xs font-bold uppercase tracking-wider">Analyzing with AI...</span>
+                                 </div>
+                              </div>
+                           )}
                            <p className="text-sm font-bold truncate max-w-full px-4 text-emerald-700">{uploadForm.fileName}</p>
-                           <button 
-                             type="button"
-                             onClick={() => setUploadForm(prev => ({ ...prev, fileData: '', fileName: '' }))}
-                             className="text-xs text-red-500 hover:text-red-700 mt-2 font-medium"
-                           >
-                             Remove & Replace
-                           </button>
+                           {!isAnalyzing && (
+                             <button 
+                               type="button"
+                               onClick={() => setUploadForm(prev => ({ ...prev, fileData: '', fileName: '' }))}
+                               className="text-xs text-red-500 hover:text-red-700 mt-2 font-medium"
+                             >
+                               Remove & Replace
+                             </button>
+                           )}
                         </div>
                      ) : (
                         <div className="space-y-4">
@@ -448,8 +489,6 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                            </p>
                         </div>
                      )}
-                     
-                     {/* Hidden Inputs */}
                      <input 
                        type="file" 
                        ref={fileInputRef} 
@@ -467,7 +506,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                    value={uploadForm.title}
                    onChange={e => setUploadForm({...uploadForm, title: e.target.value})}
-                   placeholder="e.g. Scanned Invoice #1024"
+                   placeholder="AI will title this automatically..."
                  />
                </div>
 
@@ -487,21 +526,23 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ documents, onAddDocumen
                </div>
 
                <div>
-                 <label className="block text-sm font-medium text-slate-700 mb-1">Description (Optional)</label>
-                 <input 
-                   type="text" 
-                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                 <label className="block text-sm font-medium text-slate-700 mb-1">Description & Extracted Data</label>
+                 <textarea 
+                   rows={4}
+                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
                    value={uploadForm.description}
                    onChange={e => setUploadForm({...uploadForm, description: e.target.value})}
+                   placeholder="AI analysis will appear here..."
                  />
                </div>
 
                <button 
                  type="submit" 
-                 disabled={!uploadForm.fileData}
-                 className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold shadow-sm mt-2 transition-colors"
+                 disabled={!uploadForm.fileData || isAnalyzing}
+                 className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold shadow-sm mt-2 transition-colors flex items-center justify-center gap-2"
                >
-                 Save to Database
+                 {isAnalyzing ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                 {isAnalyzing ? "Processing..." : "Save to Database"}
                </button>
              </form>
           </div>

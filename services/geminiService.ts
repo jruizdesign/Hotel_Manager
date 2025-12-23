@@ -1,13 +1,15 @@
 import { GoogleGenAI } from "@google/genai";
 
 // Initialize the client with the API key from the environment variable.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const genAI = new GoogleGenAI(process.env.API_KEY || '');
 
 export const generateAIResponse = async (
   prompt: string, 
   contextData: string
 ): Promise<string> => {
   try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
     const fullPrompt = `
       You are an expert Hotel Management AI Assistant named "ConciergeAI".
       Your goal is to help hotel staff be more efficient.
@@ -22,12 +24,9 @@ export const generateAIResponse = async (
       If asked to write an email, format it properly.
     `;
 
-    const result = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-    });
-
-    return result.text() || "I couldn't generate a response at this time.";
+    const result = await model.generateContent(fullPrompt);
+    const response = await result.response;
+    return response.text() || "I couldn't generate a response at this time.";
   } catch (error) {
     console.error("Gemini API Error:", error);
     return "Sorry, I encountered an error processing your request.";
@@ -36,6 +35,8 @@ export const generateAIResponse = async (
 
 export const analyzeDocument = async (base64Image: string): Promise<{ category: string; title: string; description: string; extractedText: string }> => {
   try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
     // Remove base64 prefix if present
     const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|pdf);base64,/, '');
     
@@ -55,25 +56,19 @@ export const analyzeDocument = async (base64Image: string): Promise<{ category: 
       }
     `;
 
-    const result = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: cleanBase64
-              }
-            }
-          ]
+    const result = await model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: cleanBase64
         }
-      ],
-    });
+      }
+    ]);
 
-    const responseText = result.text();
+    const response = await result.response;
+    const responseText = response.text();
+    
     // Extract JSON from response (handling potential markdown code blocks)
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {

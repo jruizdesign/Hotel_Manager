@@ -73,7 +73,7 @@ const GuestList: React.FC<GuestListProps> = ({
   const selectedGuest = guests.find(g => g.id === selectedGuestId) || null;
   const filteredGuests = guests.filter(guest => 
     guest.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    guest.roomNumber.includes(searchTerm) ||
+    guest.roomNumber && guest.roomNumber.includes(searchTerm) ||
     guest.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
   const filteredDNR = dnrRecords.filter(record => 

@@ -27,8 +27,7 @@ export const generateAIResponse = async (
       contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
     });
 
-    const response = await result.response;
-    return response.text() || "I couldn't generate a response at this time.";
+    return result.text() || "I couldn't generate a response at this time.";
   } catch (error) {
     console.error("Gemini API Error:", error);
     return "Sorry, I encountered an error processing your request.";
@@ -74,8 +73,7 @@ export const analyzeDocument = async (base64Image: string): Promise<{ category: 
       ],
     });
 
-    const response = await result.response;
-    const responseText = response.text();
+    const responseText = result.text();
     // Extract JSON from response (handling potential markdown code blocks)
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {

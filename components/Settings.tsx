@@ -71,23 +71,22 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
 
   const handleDemoModeToggle = async () => {
     if (settings.demoMode) {
-      if (window.confirm("Disable Demo Mode? This will ERASE all demo data.")) {
+      if (window.confirm("Disable Demo Mode? This will ERASE all demo data and reload the app.")) {
         const newSettings = { ...settings, demoMode: false };
         setSettings(newSettings);
         await StorageService.saveSettings(newSettings);
         await StorageService.clearAllData();
-        await onDataReset();
+        window.location.reload();
       }
     } else {
-      if (window.confirm("Enable Demo Mode? This will replace your current data with example data.")) {
+      if (window.confirm("Enable Demo Mode? This will replace your current data with example data and reload the app.")) {
         await StorageService.resetToDemo();
         const newSettings = { ...settings, demoMode: true };
         setSettings(newSettings);
         await StorageService.saveSettings(newSettings);
-        await onDataReset();
+        window.location.reload();
       }
     }
-    loadDbStats();
   };
 
   const handleSaveSettings = async (reload: boolean = false) => {
@@ -121,22 +120,25 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
   };
 
   const handleResetRooms = async () => {
-    if (window.confirm("Are you sure you want to reset all rooms? This will delete all room data and status information.")) {
+    if (window.confirm("Are you sure you want to reset ALL rooms? This will delete all room data. The application will reload to trigger the setup wizard.")) {
       await db.rooms.clear();
-      await onDataReset();
-      loadDbStats();
-      alert("Rooms reset successfully.");
+      // Also clear settings to ensure demo mode is off and setup wizard shows up
+      const currentSettings = await StorageService.getSettings();
+      await StorageService.saveSettings({ ...currentSettings, demoMode: false });
+      window.location.reload();
     }
   };
 
   const handleResetGuests = async () => {
-    if (window.confirm("Are you sure you want to reset all guest data? This will delete all guest records, history, and balances.")) {
-      await db.guests.clear();
-      await db.history.clear();
-      await db.transactions.clear();
-      await onDataReset();
-      loadDbStats();
-      alert("Guest data reset successfully.");
+    if (window.confirm("Are you sure you want to reset ALL guest data? This will delete all guest records, history, and transactions. The application will reload.")) {
+      await Promise.all([
+        db.guests.clear(),
+        db.history.clear(),
+        db.transactions.clear(),
+        db.documents.clear(),
+        db.dnr.clear()
+      ]);
+      window.location.reload();
     }
   };
 
@@ -228,15 +230,15 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
             <div className="p-6 space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-slate-700">Reset Rooms</p>
-                  <p className="text-sm text-slate-500">Deletes all room records and status information. This cannot be undone.</p>
+                  <p className="font-bold text-slate-700">Reset Rooms & Trigger Setup</p>
+                  <p className="text-sm text-slate-500">Deletes all room records and triggers the setup wizard on reload. This cannot be undone.</p>
                 </div>
-                <button onClick={handleResetRooms} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-medium hover:bg-red-100 transition-colors">Reset Rooms</button>
+                <button onClick={handleResetRooms} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-medium hover:bg-red-100 transition-colors">Reset & Setup</button>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-bold text-slate-700">Reset Guest Data</p>
-                  <p className="text-sm text-slate-500">Deletes all guest records, stay history, and transaction logs. This cannot be undone.</p>
+                  <p className="text-sm text-slate-500">Deletes all guest records, history, and transactions. This cannot be undone.</p>
                 </div>
                 <button onClick={handleResetGuests} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-medium hover:bg-red-100 transition-colors">Reset Guests</button>
               </div>
@@ -248,7 +250,7 @@ const Settings: React.FC<SettingsProps> = ({ onDataReset, userRole }) => {
           <div className="p-6 border-b"><h3 className="text-lg font-bold flex items-center gap-2"><HardDrive /> Backup & Restore</h3></div>
           <div className="p-6 flex gap-4">
               <button onClick={handleDownloadBackup} className="bg-emerald-600 text-white px-4 py-2 rounded-lg">Download Backup</button>
-              <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={(e) => { const f = e.target.files?.[0]; if(f){const r = new FileReader(); r.onload = async (ev) => { try { const j = JSON.parse(ev.target?.result as string); if(confirm("Overwrite ALL data?")){ await StorageService.importData(j); await onDataReset(); alert("Restored!"); } } catch(err){ alert("Invalid backup file."); } }; r.readAsText(f); } }} />
+              <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={(e) => { const f = e.target.files?.[0]; if(f){const r = new FileReader(); r.onload = async (ev) => { try { const j = JSON.parse(ev.target?.result as string); if(confirm("Overwrite ALL data?")){ await StorageService.importData(j); window.location.reload(); } } catch(err){ alert("Invalid backup file."); } }; r.readAsText(f); } }} />
               <button onClick={() => fileInputRef.current?.click()} className="bg-slate-800 text-white px-4 py-2 rounded-lg">Restore from File</button>
           </div>
         </div>

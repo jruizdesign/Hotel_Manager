@@ -22,12 +22,13 @@ export const generateAIResponse = async (
       If asked to write an email, format it properly.
     `;
 
-    const response = await ai.models.generateContent({
+    const result = await ai.models.generateContent({
       model: 'gemini-1.5-flash',
       contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
     });
 
-    return response.response.text() || "I couldn't generate a response at this time.";
+    const response = await result.response;
+    return response.text() || "I couldn't generate a response at this time.";
   } catch (error) {
     console.error("Gemini API Error:", error);
     return "Sorry, I encountered an error processing your request.";
@@ -37,7 +38,7 @@ export const generateAIResponse = async (
 export const analyzeDocument = async (base64Image: string): Promise<{ category: string; title: string; description: string; extractedText: string }> => {
   try {
     // Remove base64 prefix if present
-    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
+    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|pdf);base64,/, '');
     
     const prompt = `
       Analyze this document image for a hotel management system.
@@ -73,7 +74,8 @@ export const analyzeDocument = async (base64Image: string): Promise<{ category: 
       ],
     });
 
-    const responseText = result.response.text();
+    const response = await result.response;
+    const responseText = response.text();
     // Extract JSON from response (handling potential markdown code blocks)
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {

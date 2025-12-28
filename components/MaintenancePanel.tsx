@@ -1,29 +1,25 @@
 import React, { useState } from 'react';
-import { MaintenanceTicket, UserRole, Room } from '../types';
-import { Wrench, Plus, CheckCircle2, AlertTriangle, Clock, X, DollarSign, Calendar } from 'lucide-react';
-import { shouldSendEmail } from '../services/geminiService';
-import { sendMaintenanceRequestEmail } from '../services/emailService';
+import { MaintenanceTicket, Room, UserRole } from '../types';
+import { Wrench, Plus, CheckCircle2, AlertTriangle, X, DollarSign } from 'lucide-react';
+import * as db from '../services/db'; // Using db service directly for simplicity
 
 interface MaintenancePanelProps {
   tickets: MaintenanceTicket[];
   rooms: Room[];
-  userRole: UserRole;
-  onAddTicket: (ticket: Omit<MaintenanceTicket, 'id' | 'status' | 'date'>) => Promise<void>;
-  onResolveTicket: (id: string, cost: number, notes: string) => void;
+  onUpdate: () => Promise<void>;
+  currentUser: { email: string; role: UserRole };
 }
 
-const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, userRole, onAddTicket, onResolveTicket }) => {
+const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, onUpdate, currentUser }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [resolveTicketId, setResolveTicketId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'Active' | 'Resolved'>('Active');
-  const [isSending, setIsSending] = useState(false); // To prevent double submission
 
   // Add Form State
   const [newTicket, setNewTicket] = useState({
     roomNumber: '',
     description: '',
     priority: 'Medium' as 'Low' | 'Medium' | 'High',
-    reportedBy: userRole === 'Contractor' ? 'Contractor' : 'Staff'
   });
 
   // Resolve Form State
@@ -32,51 +28,24 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSending) return;
-
-    setIsSending(true);
-    try {
-      const ticketData = {
+    const ticketData: Omit<MaintenanceTicket, 'id' | 'status' | 'date'> = {
         roomNumber: newTicket.roomNumber,
         description: newTicket.description,
         priority: newTicket.priority,
-        reportedBy: newTicket.reportedBy,
-      };
+        reportedBy: currentUser.email,
+    };
 
-      // This is the local state update
-      await onAddTicket(ticketData);
-
-      // --- AI Email Logic ---
-      const shouldSend = await shouldSendEmail(ticketData.description);
-
-      if (shouldSend) {
-        console.log('AI decided to send a maintenance email for an urgent request.');
-        const mockTicket: MaintenanceTicket = { 
-          ...ticketData, 
-          id: `temp-${Date.now()}`,
-          status: 'Pending',
-          date: new Date().toISOString()
-        };
-        await sendMaintenanceRequestEmail(mockTicket);
-        console.log('Maintenance email queued successfully via Firestore.');
-      }
-      // -- End AI Logic --
-
-      setIsAddModalOpen(false);
-      setNewTicket({ roomNumber: '', description: '', priority: 'Medium', reportedBy: 'Staff' });
-
-    } catch (error) {
-      console.error("Error submitting ticket or sending email:", error);
-      // Optionally, show an error to the user
-    } finally {
-      setIsSending(false);
-    }
+    await db.addMaintenanceTicket(ticketData);
+    await onUpdate();
+    setIsAddModalOpen(false);
+    setNewTicket({ roomNumber: '', description: '', priority: 'Medium' });
   };
 
-  const handleResolveSubmit = (e: React.FormEvent) => {
+  const handleResolveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (resolveTicketId) {
-      onResolveTicket(resolveTicketId, Number(resolveCost), resolveNote);
+      await db.resolveMaintenanceTicket(resolveTicketId, Number(resolveCost), resolveNote);
+      await onUpdate();
       setResolveTicketId(null);
       setResolveCost('');
       setResolveNote('');
@@ -88,10 +57,10 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
     filter === 'Active' ? t.status !== 'Resolved' : t.status === 'Resolved'
   ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const canResolve = ['Superuser', 'Manager', 'Contractor'].includes(userRole);
+  const canResolve = ['Superuser', 'Manager', 'Contractor'].includes(currentUser.role);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Wrench className="text-emerald-600" /> Maintenance Center</h2>
@@ -132,50 +101,50 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase text-xs">
                 <tr>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Room / Area</th>
-                  <th className="px-6 py-4">Issue</th>
-                  <th className="px-6 py-4">Priority</th>
-                  <th className="px-6 py-4">Reported</th>
-                  {filter === 'Resolved' && <th className="px-6 py-4 text-right">Cost</th>}
-                  <th className="px-6 py-4 text-right">Actions</th>
+                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-3">Room / Area</th>
+                  <th className="px-6 py-3">Issue</th>
+                  <th className="px-6 py-3">Priority</th>
+                  <th className="px-6 py-3">Reported</th>
+                  {filter === 'Resolved' && <th className="px-6 py-3 text-right">Cost</th>}
+                  <th className="px-6 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {displayedTickets.map(t => (
                   <tr key={t.id} className="hover:bg-slate-50">
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        t.status === 'Pending' ? 'bg-amber-100 text-amber-700' :
-                        t.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
-                        'bg-emerald-100 text-emerald-700'
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        t.status === 'Pending' ? 'bg-amber-100 text-amber-800' :
+                        t.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
+                        'bg-emerald-100 text-emerald-800'
                       }`}>
                         {t.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-bold">
+                    <td className="px-6 py-4 font-bold text-slate-900">
                        {t.roomNumber}
                     </td>
-                    <td className="px-6 py-4">{t.description}</td>
+                    <td className="px-6 py-4 max-w-xs truncate">{t.description}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         {t.priority === 'High' && <AlertTriangle size={14} className="text-red-500" />}
-                        <span className={`${t.priority === 'High' ? 'text-red-600 font-bold' : ''}`}>
+                        <span className={`${t.priority === 'High' ? 'text-red-600 font-bold' : 'text-slate-600'}`}>
                           {t.priority}
                         </span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col text-xs">
-                        <span className="font-medium text-slate-700">{t.date}</span>
-                        <span>by {t.reportedBy}</span>
+                        <span className="font-medium text-slate-700">{new Date(t.date).toLocaleDateString()}</span>
+                        <span className="text-slate-500">by {t.reportedBy}</span>
                       </div>
                     </td>
                     {filter === 'Resolved' && (
                        <td className="px-6 py-4 text-right font-mono text-emerald-600 font-bold">
-                         ${t.cost || 0}
+                         ${t.cost?.toFixed(2) || '0.00'}
                        </td>
                     )}
                     <td className="px-6 py-4 text-right">
@@ -207,7 +176,7 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
       {/* ADD TICKET MODAL */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
               <h3 className="text-lg font-bold text-slate-800">Report Maintenance Issue</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
@@ -249,15 +218,17 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {(['Low', 'Medium', 'High'] as const).map(p => (
                     <button
                       key={p}
                       type="button"
                       onClick={() => setNewTicket({...newTicket, priority: p})}
-                      className={`flex-1 py-2 text-sm rounded-lg border font-medium transition-all ${
+                      className={`py-2 text-sm rounded-lg border font-semibold transition-all ${
                         newTicket.priority === p 
-                          ? p === 'High' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-slate-800 text-white border-slate-800'
+                          ? p === 'High' ? 'bg-red-100 border-red-300 text-red-700 shadow-sm' 
+                          : p === 'Medium' ? 'bg-amber-100 border-amber-300 text-amber-700 shadow-sm'
+                          : 'bg-slate-100 border-slate-300 text-slate-700 shadow-sm'
                           : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                       }`}
                     >
@@ -268,8 +239,8 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
               </div>
 
               <div className="pt-2">
-                 <button type="submit" disabled={isSending} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold shadow-sm disabled:opacity-50">
-                   {isSending ? 'Submitting...' : 'Submit Ticket'}
+                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold shadow-sm">
+                   Submit Ticket
                  </button>
               </div>
             </form>
@@ -280,7 +251,7 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
       {/* RESOLVE & COST MODAL */}
       {resolveTicketId && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
              <div className="bg-emerald-600 px-6 py-4 flex justify-between items-center text-white">
                <div>
                   <h3 className="text-lg font-bold">Resolve Ticket</h3>
@@ -292,8 +263,8 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
              </div>
 
              <form onSubmit={handleResolveSubmit} className="p-6 space-y-4">
-               <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm text-slate-600 mb-4">
-                 Closing Ticket ID: <span className="font-mono font-bold">{resolveTicketId}</span>
+               <div className="bg-slate-100 p-3 rounded-lg border border-slate-200 text-sm text-slate-600 mb-4">
+                 Closing Ticket ID: <span className="font-mono font-bold text-slate-800">{resolveTicketId}</span>
                </div>
 
                <div>
@@ -313,10 +284,9 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
                </div>
 
                <div>
-                 <label className="block text-sm font-medium text-slate-700 mb-1">Resolution Notes</label>
+                 <label className="block text-sm font-medium text-slate-700 mb-1">Resolution Notes (Optional)</label>
                  <input 
                    type="text" 
-                   required
                    placeholder="e.g. Replaced fan motor"
                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                    value={resolveNote}

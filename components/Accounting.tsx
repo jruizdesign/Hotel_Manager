@@ -6,9 +6,10 @@ interface AccountingProps {
   transactions: Transaction[];
   guests: Guest[];
   rooms: Room[];
+  onUpdate: () => Promise<void>;
 }
 
-const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) => {
+const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms, onUpdate }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'receivables' | 'transactions'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -84,7 +85,7 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 p-4 md:p-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
@@ -167,7 +168,7 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
                     </div>
                     <div>
                       <p className="font-medium text-slate-800">{t.description}</p>
-                      <p className="text-xs text-slate-500">{t.date} • {t.category}</p>
+                      <p className="text-xs text-slate-500">{new Date(t.date).toLocaleDateString()} • {t.category}</p>
                     </div>
                   </div>
                   <span className={`font-bold ${t.type === 'Income' ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -188,85 +189,87 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
               <h3 className="text-lg font-bold text-slate-800">Guest Ledger</h3>
               <p className="text-sm text-slate-500">Daily breakdown of amounts due from guests</p>
             </div>
-            <div className="bg-amber-50 text-amber-700 px-4 py-2 rounded-lg text-sm font-medium border border-amber-100">
+            <div className="bg-amber-100 text-amber-700 px-4 py-2 rounded-lg text-sm font-bold border border-amber-200">
               Total Due: ${totalReceivables.toLocaleString()}
             </div>
           </div>
           
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase tracking-wider">
-              <tr>
-                <th className="px-6 py-4">Guest</th>
-                <th className="px-6 py-4">Room</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Daily Rate</th>
-                <th className="px-6 py-4 text-right">Current Due</th>
-                <th className="px-6 py-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {activeDebtors.length > 0 ? (
-                activeDebtors.map(guest => {
-                  const dailyRate = getRoomPrice(guest.roomNumber);
-                  const isVip = guest.vip;
-                  const isUpToDate = guest.balance <= 0;
-                  
-                  return (
-                    <tr key={guest.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-xs">
-                            {guest.name.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-slate-900">{guest.name}</p>
-                              {isVip && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded uppercase tracking-wide">VIP</span>}
-                            </div>
-                            <p className="text-xs text-slate-400">{guest.email}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 font-medium">
-                        {guest.roomNumber ? `#${guest.roomNumber}` : <span className="text-slate-400">Not Assigned</span>}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          guest.status === 'Checked In' ? 'bg-emerald-100 text-emerald-700' :
-                          guest.status === 'Reserved' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
-                        }`}>
-                          {guest.status}
-                        </span>
-                        {isVip && !guest.checkOut && <div className="text-[10px] text-slate-400 mt-1">Indefinite Stay</div>}
-                      </td>
-                      <td className="px-6 py-4 text-slate-500">{dailyRate > 0 ? `$${dailyRate}/night` : '-'}</td>
-                      <td className="px-6 py-4 text-right">
-                        {isVip && isUpToDate ? (
-                          <div>
-                            <span className="font-bold text-lg text-slate-700">${dailyRate.toLocaleString()}</span>
-                            <p className="text-[10px] text-slate-400">Daily Accrual</p>
-                          </div>
-                        ) : (
-                          <span className={`font-bold text-lg ${guest.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                            ${guest.balance.toLocaleString()}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button className="text-blue-600 hover:text-blue-800 font-medium text-xs">View Folio</button>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase tracking-wider text-xs">
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
-                    No outstanding balances found.
-                  </td>
+                  <th className="px-6 py-3">Guest</th>
+                  <th className="px-6 py-3">Room</th>
+                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-3">Daily Rate</th>
+                  <th className="px-6 py-3 text-right">Current Due</th>
+                  <th className="px-6 py-3 text-right">Action</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {activeDebtors.length > 0 ? (
+                  activeDebtors.map(guest => {
+                    const dailyRate = getRoomPrice(guest.roomNumber);
+                    const isVip = guest.vip;
+                    const isUpToDate = guest.balance <= 0;
+                    
+                    return (
+                      <tr key={guest.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-xs">
+                              {guest.name.charAt(0)}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-slate-900">{guest.name}</p>
+                                {isVip && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded-full uppercase tracking-wide">VIP</span>}
+                              </div>
+                              <p className="text-xs text-slate-400">{guest.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-slate-800">
+                          {guest.roomNumber ? `#${guest.roomNumber}` : <span className="text-slate-400">Not Assigned</span>}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            guest.status === 'Checked In' ? 'bg-emerald-100 text-emerald-800' :
+                            guest.status === 'Reserved' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {guest.status}
+                          </span>
+                          {isVip && !guest.checkOut && <div className="text-[10px] text-slate-400 mt-1">Indefinite Stay</div>}
+                        </td>
+                        <td className="px-6 py-4 text-slate-500">{dailyRate > 0 ? `$${dailyRate}/night` : '-'}</td>
+                        <td className="px-6 py-4 text-right">
+                          {isVip && isUpToDate ? (
+                            <div>
+                              <span className="font-bold text-lg text-slate-700">${dailyRate.toLocaleString()}</span>
+                              <p className="text-[10px] text-slate-400">Daily Accrual</p>
+                            </div>
+                          ) : (
+                            <span className={`font-bold text-lg ${guest.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                              ${guest.balance.toLocaleString()}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button className="text-blue-600 hover:text-blue-800 font-medium text-xs">View Folio</button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                      No outstanding balances found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -288,45 +291,47 @@ const Accounting: React.FC<AccountingProps> = ({ transactions, guests, rooms }) 
               <Filter size={16} /> Filter
             </button>
           </div>
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase tracking-wider">
-              <tr>
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Description</th>
-                <th className="px-6 py-4">Category</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4 text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {transactions
-                .filter(t => t.description.toLowerCase().includes(searchTerm.toLowerCase()) || t.category.toLowerCase().includes(searchTerm.toLowerCase()))
-                .map((t) => (
-                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">{t.date}</td>
-                  <td className="px-6 py-4 font-medium text-slate-900">{t.description}</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-medium">
-                      {t.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`flex items-center gap-1 text-xs font-bold ${
-                      t.type === 'Income' ? 'text-emerald-600' : 'text-red-600'
-                    }`}>
-                      {t.type === 'Income' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                      {t.type}
-                    </span>
-                  </td>
-                  <td className={`px-6 py-4 text-right font-bold ${
-                    t.type === 'Income' ? 'text-emerald-600' : 'text-slate-800'
-                  }`}>
-                    {t.type === 'Income' ? '+' : '-'}${t.amount.toLocaleString()}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-800 font-semibold uppercase tracking-wider text-xs">
+                <tr>
+                  <th className="px-6 py-3">Date</th>
+                  <th className="px-6 py-3">Description</th>
+                  <th className="px-6 py-3">Category</th>
+                  <th className="px-6 py-3">Type</th>
+                  <th className="px-6 py-3 text-right">Amount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {transactions
+                  .filter(t => t.description.toLowerCase().includes(searchTerm.toLowerCase()) || t.category.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .map((t) => (
+                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap">{new Date(t.date).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 font-medium text-slate-900">{t.description}</td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-medium">
+                        {t.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`flex items-center gap-1.5 text-xs font-bold ${
+                        t.type === 'Income' ? 'text-emerald-600' : 'text-red-600'
+                      }`}>
+                        <div className={`w-2 h-2 rounded-full ${t.type === 'Income' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                        {t.type}
+                      </span>
+                    </td>
+                    <td className={`px-6 py-4 text-right font-mono font-semibold ${
+                      t.type === 'Income' ? 'text-emerald-600' : 'text-slate-800'
+                    }`}>
+                      {t.type === 'Income' ? '+' : '-'}$ {t.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

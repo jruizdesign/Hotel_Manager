@@ -6,11 +6,11 @@ interface GuestDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   guest: Guest | null;
-  room: Room | null;
+  onUpdate: () => Promise<void>;
 }
 
-const GuestDetailsModal: React.FC<GuestDetailsModalProps> = ({ isOpen, onClose, guest, room }) => {
-  if (!isOpen || !guest || !room) return null;
+const GuestDetailsModal: React.FC<GuestDetailsModalProps> = ({ isOpen, onClose, guest, onUpdate }) => {
+  if (!isOpen || !guest) return null;
 
   const getStayDuration = () => {
     const checkInDate = new Date(guest.checkIn);
@@ -24,7 +24,7 @@ const GuestDetailsModal: React.FC<GuestDetailsModalProps> = ({ isOpen, onClose, 
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl">
         <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-          <h3 className="font-bold text-slate-800">Guest Details - Room {room.number}</h3>
+          <h3 className="font-bold text-slate-800">Guest Details - Room {guest.roomNumber}</h3>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-800"><X size={20} /></button>
         </div>
         <div className="p-6 space-y-4">

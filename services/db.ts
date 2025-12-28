@@ -38,3 +38,39 @@ export class StaySyncDatabase extends Dexie {
 }
 
 export const db = new StaySyncDatabase();
+
+export function isSetupComplete() {
+    throw new Error('Function not implemented.');
+}
+export function updateRoom(id: string, roomUpdate: Partial<Room>) {
+    throw new Error('Function not implemented.');
+}
+
+export function addGuest(arg0: Guest, arg1: string) {
+    throw new Error('Function not implemented.');
+}
+
+export function getMaintenanceTickets(): import("react").SetStateAction<MaintenanceTicket[]> | PromiseLike<import("react").SetStateAction<MaintenanceTicket[]>> {
+    throw new Error('Function not implemented.');
+}
+
+export function getDocuments(): import("react").SetStateAction<StoredDocument[]> | PromiseLike<import("react").SetStateAction<StoredDocument[]>> {
+    throw new Error('Function not implemented.');
+}
+
+export function getRooms(): import("react").SetStateAction<Room[]> | PromiseLike<import("react").SetStateAction<Room[]>> {
+    throw new Error('Function not implemented.');
+}
+
+export function getGuests(): import("react").SetStateAction<Guest[]> | PromiseLike<import("react").SetStateAction<Guest[]>> {
+    throw new Error('Function not implemented.');
+}
+
+export function getStaff(): import("react").SetStateAction<Staff[]> | PromiseLike<import("react").SetStateAction<Staff[]>> {
+    throw new Error('Function not implemented.');
+}
+
+export function getTransactions(): import("react").SetStateAction<Transaction[]> | PromiseLike<import("react").SetStateAction<Transaction[]>> {
+    throw new Error('Function not implemented.');
+}
+

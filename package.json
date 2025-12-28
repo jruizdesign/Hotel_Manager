@@ -26,7 +26,8 @@
     "nodemailer": "^7.0.11",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "recharts": "^3.5.1"
+    "recharts": "^3.5.1",
+    "terser": "^5.44.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

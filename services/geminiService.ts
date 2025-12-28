@@ -1,7 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/genai";
 
 // Initialize the client with the API key from the environment variable.
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY || '' });
+const genAI = new GoogleGenerativeAI(process.env.API_KEY || '');
 
 export const generateAIResponse = async (
   prompt: string, 
@@ -22,183 +22,89 @@ export const generateAIResponse = async (
       If asked to write an email, format it properly.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-    });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(fullPrompt);
+    const response = result.response;
+    const text = response.text();
+    return text;
 
-    // In @google/genai, the response object typically has a 'text' property
-    return (response as any).text || "I couldn't generate a response at this time.";
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "Sorry, I encountered an error processing your request.";
+  } catch (error: any) {
+    console.error("Gemini AI Error:", error);
+    // Provide a more user-friendly error message
+    if (error.message.includes('API key not valid')) {
+      return "Error: The AI service API key is not valid. Please check your settings.";
+    }
+    return `Error: Could not generate AI response. ${error.message}`;
   }
 };
 
-export const analyzeDocument = async (base64Image: string): Promise<{ category: string; title: string; description: string; extractedText: string }> => {
-  try {
-    // Remove base64 prefix if present
-    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|pdf);base64,/, '');
+export const generateInvoiceEmail = async (guestName: string, invoiceDetails: string): Promise<{ subject: string, body: string }> => {
+  const prompt = `
+    Generate a professional and friendly email to a hotel guest named ${guestName} with their invoice.
+    The tone should be courteous and reflect good hospitality.
+    Include the invoice details provided below.
     
-    const prompt = `
-      Analyze this document image for a hotel management system.
-      1. Categorize it as one of: 'Invoice', 'Guest ID', 'Contract', 'Report', or 'Other'.
-      2. Generate a concise, descriptive title.
-      3. Provide a brief summary/description of the document's content.
-      4. Extract all important text from the document.
+    Invoice Details:
+    ${invoiceDetails}
 
-      Respond ONLY in JSON format like this:
-      {
-        "category": "category name",
-        "title": "document title",
-        "description": "brief summary",
-        "extractedText": "all extracted text here"
-      }
-    `;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: cleanBase64
-              }
-            }
-          ]
-        }
-      ],
-    });
-
-    const responseText = (response as any).text || "";
-    // Extract JSON from response (handling potential markdown code blocks)
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
+    Output only the subject line and the email body, separated by a newline.
+    Example:
+    Subject: Your Invoice from StaySync Hotel
     
-    throw new Error("Could not parse AI response");
-  } catch (error) {
-    console.error("Document Analysis Error:", error);
-    return {
-      category: 'Other',
-      title: 'Scanned Document',
-      description: 'AI analysis failed',
-      extractedText: ''
-    };
-  }
+    Dear ${guestName},
+    ...
+  `;
+  
+  const responseText = await generateAIResponse(prompt, "Context: Generating an invoice email.");
+
+  const lines = responseText.split('\n');
+  const subject = lines.find(line => line.toLowerCase().startsWith('subject:'))?.replace(/subject:/i, '').trim() || 'Your Invoice';
+  const body = lines.filter(line => !line.toLowerCase().startsWith('subject:')).join('\n').trim();
+
+  return { subject, body };
 };
 
-/**
- * Analyzes document text to determine if an email should be sent and provides the email details.
- * @param documentText The text content of the document to analyze.
- * @returns An object indicating whether to send an email and the email details.
- */
-export const shouldSendEmail = async (documentText: string): Promise<{
-  sendEmail: boolean;
-  to?: string;
-  subject?: string;
-  body?: string;
-}> => {
-  try {
-    const prompt = `
-      You are an AI assistant for a hotel management system. Your task is to analyze the following document text and decide if an automated email is necessary.
+export const shouldSendEmail = async (description: string): Promise<boolean> => {
+  const prompt = `
+    A new maintenance request has been submitted with the following description: "${description}".
+    Analyze the description to determine if this is an urgent issue that requires immediate email notification to the maintenance department.
+    Urgent issues are things like major leaks, power outages, security risks, or anything that could significantly impact guest safety or hotel operations.
+    Non-urgent issues are things like a dripping faucet, a burnt-out lightbulb in a non-critical area, or minor cosmetic damage.
 
-      Document Text:
-      ---
-      ${documentText}
-      ---
-
-      Based on the. text, perform the following actions:
-      1.  Determine if an email should be sent. This is usually for high-priority items, invoices, guest complaints, or urgent maintenance requests. Do not send emails for routine reports or general information.
-      2.  If an email is needed, identify the recipient category. Use one of the following: 'maintenance', 'accounting', 'frontdesk', 'manager'.
-      3.  Create a concise and professional subject line.
-      4.  Write a clear and professional email body summarizing the key information.
-
-      Respond ONLY with a JSON object in the following format. Do not include any other text or markdown formatting.
-      If no email is required:
-      {
-        "sendEmail": false
-      }
-      If an email is required:
-      {
-        "sendEmail": true,
-        "to": "recipient_category",
-        "subject": "Email Subject",
-        "body": "Email body content."
-      }
-    `;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    });
-
-    const responseText = (response as any).text || "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-
-    throw new Error("Could not parse AI response into valid JSON.");
-
-  } catch (error) {
-    console.error("AI Email Decision Error:", error);
-    // In case of an error, default to not sending an email to be safe.
-    return { sendEmail: false };
-  }
+    Respond with only "YES" or "NO".
+  `;
+  
+  const response = await generateAIResponse(prompt, "Context: Evaluating maintenance request urgency.");
+  
+  return response.trim().toUpperCase() === 'YES';
 };
 
-/**
- * Generates a customer-facing email for an invoice.
- * @param guestName The name of the guest.
- * @param invoiceDetails A string containing the details of the invoice.
- * @returns A JSON object with the email subject and body.
- */
-export const generateInvoiceEmail = async (guestName: string, invoiceDetails: string): Promise<{ subject: string; body: string; }> => {
+export const analyzeDocument = async (base64Data: string): Promise<{ title: string; category: string; description: string; extractedText?: string; }> => {
+  const prompt = `
+    Analyze the following document (provided as a base64 string) and return a structured JSON object with the following fields:
+    - title: A concise, descriptive title for the document.
+    - category: Classify the document into one of the following categories: 'Invoice', 'Guest ID', 'Contract', 'Report', or 'Other'.
+    - description: A brief summary of the document's content.
+    - extractedText: (Optional) If the document contains text, extract the full, clean text.
+
+    Document Data: ${base64Data}
+
+    Respond with only the JSON object.
+  `;
+
   try {
-    const prompt = `
-      You are an AI assistant for StaySync Hotel. Your task is to generate a professional, friendly, and clear email to a guest with their invoice details.
-
-      Guest Name: ${guestName}
-
-      Invoice Details:
-      ---
-      ${invoiceDetails}
-      ---
-
-      Based on these details, generate a customer-facing email.
-
-      Respond ONLY with a JSON object in the following format. Do not include any other text or markdown formatting.
-      {
-        "subject": "Your Invoice from StaySync Hotel",
-        "body": "Dear ${guestName},\n\nThank you for staying with us. Please find your invoice details attached.\n\n${invoiceDetails}\n\nWe hope you enjoyed your stay!\n\nSincerely,\nThe StaySync Hotel Team"
-      }
-    `;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    });
-
-    const responseText = (response as any).text || "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-
-    throw new Error("Could not parse AI response into valid JSON.");
-
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const rawJson = response.text().trim().replace(/^```json\n/, '').replace(/\n```$/, '');
+    return JSON.parse(rawJson);
   } catch (error) {
-    console.error("AI Invoice Email Generation Error:", error);
-    // Fallback in case of error
+    console.error("Error analyzing document with AI:", error);
+    // Return a default/error structure
     return {
-      subject: `Your Invoice from StaySync Hotel`,
-      body: `Dear ${guestName},\n\nThank you for choosing StaySync Hotel. Please find your invoice details below.\n\n${invoiceDetails}\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nThe StaySync Hotel Team`,
+      title: "Analysis Failed",
+      category: "Other",
+      description: "The AI model could not process this document."
     };
   }
 };

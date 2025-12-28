@@ -47,13 +47,10 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
       await onAddTicket(ticketData);
 
       // --- AI Email Logic ---
-      const documentText = `New Maintenance Request:\nRoom: ${ticketData.roomNumber}\nPriority: ${ticketData.priority}\nDescription: ${ticketData.description}`;
-      const emailDecision = await shouldSendEmail(documentText);
+      const shouldSend = await shouldSendEmail(ticketData.description);
 
-      if (emailDecision.sendEmail && emailDecision.to === 'maintenance') {
-        console.log('AI decided to send a maintenance email.');
-        // The sendMaintenanceRequestEmail now uses Firestore, so we need to give it the ticket data again.
-        // It will construct its own body for the firestore document.
+      if (shouldSend) {
+        console.log('AI decided to send a maintenance email for an urgent request.');
         const mockTicket: MaintenanceTicket = { 
           ...ticketData, 
           id: `temp-${Date.now()}`,

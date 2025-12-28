@@ -86,7 +86,9 @@ const App: React.FC = () => {
         setView('dashboard');
     };
     
-    const handleSetupComplete = async () => {
+    const handleSetupComplete = async (newRooms: Omit<Room, 'id' | 'status'>[]) => {
+        await db.addRooms(newRooms as Room[]);
+        await db.markSetupComplete();
         const setupDone = await db.isSetupComplete();
         setIsSetupComplete(setupDone);
         if(setupDone) {
@@ -140,12 +142,13 @@ const App: React.FC = () => {
     };
 
     const renderView = () => {
+        if (!currentUser) return null;
         switch (view) {
             case 'dashboard': return <Dashboard rooms={rooms} guests={guests} tickets={maintenanceTickets} onNavigate={setView} onBookRoom={handleOpenBookingModal}/>;
             case 'rooms': return <RoomDashboard rooms={rooms} guests={guests} onBook={handleOpenBookingModal} onEditRoom={(room: Room) => handleOpenRoomManager(room)} onAddNewRoom={() => handleOpenRoomManager(null)} />;
             case 'guests': return <GuestList guests={guests} onGuestSelect={handleOpenGuestDetails} />;
             case 'maintenance': return <MaintenancePanel tickets={maintenanceTickets} rooms={rooms} onUpdate={fetchData} />;
-            case 'staff': return <StaffList staff={staff} onUpdate={fetchData}/>;
+            case 'staff': return <StaffList staff={staff} onUpdate={fetchData} currentUser={currentUser} />;
             case 'accounting': return <Accounting transactions={transactions} onUpdate={fetchData} guests={guests} rooms={rooms}/>;
             case 'documents': return <DocumentCenter documents={documents} onUpdate={fetchData} guests={guests}/>;
             case 'features': return <FeatureRequestPanel requests={featureRequests} onUpdate={fetchData}/>;

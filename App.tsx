@@ -16,11 +16,12 @@ import TerminalAuth from './components/TerminalAuth';
 import DailyReport from './components/DailyReport';
 import CheckInCheckOutPanel from './components/CheckInCheckOutPanel';
 import BookingModal from './components/BookingModal';
-import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest, AttendanceLog, AttendanceAction, DNRRecord } from './types';
+import { ViewState, RoomStatus, Room, CurrentUser, Guest, Staff, Transaction, BookingHistory, MaintenanceTicket, StoredDocument, FeatureRequest, AttendanceLog, AttendanceAction, DNRRecord, SentEmail } from './types';
 import { StorageService } from './services/storage';
 import { subscribeToAuthChanges, logoutTerminal } from './services/firebase';
 import { Wrench, Loader2, Mail, AlertTriangle, FileText, CheckCircle, Menu } from 'lucide-react'; // Added Menu icon
-import { sendMaintenanceRequestEmail, sendMaintenanceResolvedEmail } from './services/emailService';
+import { sendCustomEmail } from './services/emailService';
+import { generateInvoiceEmail } from './services/geminiService';
 
 const App: React.FC = () => {
   const [terminalUser, setTerminalUser] = useState<any | null>(null);
@@ -38,6 +39,7 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [history, setHistory] = useState<BookingHistory[]>([]);
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
+  const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
   const [featureRequests, setFeatureRequests] = useState<FeatureRequest[]>([]);
   const [dnrRecords, setDnrRecords] = useState<DNRRecord[]>([]);
 
@@ -67,7 +69,7 @@ const App: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedAttendance, fetchedTrans, fetchedHistory, fetchedDocs, fetchedFeatures, fetchedDNR] = await Promise.all([
+      const [fetchedRooms, fetchedGuests, fetchedMaint, fetchedStaff, fetchedAttendance, fetchedTrans, fetchedHistory, fetchedDocs, fetchedEmails, fetchedFeatures, fetchedDNR] = await Promise.all([
         StorageService.getRooms(),
         StorageService.getGuests(),
         StorageService.getMaintenance(),
@@ -76,6 +78,7 @@ const App: React.FC = () => {
         StorageService.getTransactions(),
         StorageService.getHistory(),
         StorageService.getDocuments(),
+        StorageService.getSentEmails(),
         StorageService.getFeatureRequests(),
         StorageService.getDNRRecords()
       ]);
@@ -88,6 +91,7 @@ const App: React.FC = () => {
       setTransactions(fetchedTrans);
       setHistory(fetchedHistory);
       setDocuments(fetchedDocs);
+      setSentEmails(fetchedEmails);
       setFeatureRequests(fetchedFeatures);
       setDnrRecords(fetchedDNR);
     } catch (error) {
@@ -153,6 +157,17 @@ const App: React.FC = () => {
   const generateInvoice = async (guest: Guest, room: Room) => {
     const total = room.discount ? room.price * (1 - room.discount / 100) : room.price;
     const invoiceId = `INV-${Date.now()}`;
+    
+    // Plain text version for the email
+    const invoiceText = `
+      Invoice ID: ${invoiceId}\n
+      Guest: ${guest.name}\n
+      Room: ${room.number} (${room.type})\n
+      Nightly Rate: $${room.price.toFixed(2)}\n
+      ${room.discount ? `Discount: ${room.discount}%\n` : ''}
+      Total Due: $${total.toFixed(2)}
+    `;
+
     const invoiceHTML = `
       <div style="font-family: sans-serif; padding: 40px; border: 1px solid #eee;">
         <h1 style="color: #059669;">StaySync Hotel Invoice</h1>
@@ -197,6 +212,33 @@ const App: React.FC = () => {
     const updatedDocs = [newDoc, ...documents];
     setDocuments(updatedDocs);
     await StorageService.saveDocuments(updatedDocs);
+
+    // --- AI Email Logic ---
+    if (guest.email) {
+      try {
+        const { subject, body } = await generateInvoiceEmail(guest.name, invoiceText);
+        await sendCustomEmail(guest.email, subject, body);
+
+        const newEmail: SentEmail = {
+          id: `email-${Date.now()}`,
+          guestId: guest.id,
+          date: new Date().toISOString(),
+          to: guest.email,
+          subject,
+          body,
+          type: 'Invoice',
+        };
+        const updatedEmails = [newEmail, ...sentEmails];
+        setSentEmails(updatedEmails);
+        await StorageService.saveSentEmails(updatedEmails);
+
+        setToast({ message: 'Invoice Sent', subtext: `Invoice ${invoiceId} emailed to ${guest.email}.` });
+      } catch (error) {
+        console.error("Failed to send invoice email:", error);
+        setToast({ message: 'Email Failed', subtext: 'Could not send invoice via email.', type: 'error' });
+      }
+    }
+    // --- End AI Email Logic ---
   };
 
   const generateReceipt = async (guest: Guest, amount: number, note: string) => {
@@ -365,10 +407,10 @@ const App: React.FC = () => {
       case 'check-in-out': return <CheckInCheckOutPanel guests={guests} rooms={rooms} onUpdateGuest={handleUpdateGuest} onUpdateRoom={handleUpdateRoom} />;
       case 'rooms': return <RoomList rooms={rooms} guests={guests} onStatusChange={handleRoomStatusChange} onAddRoom={handleAddRoom} onUpdateRoom={loadData} onDeleteRoom={loadData} onBookRoom={() => setBookingRequest({ isOpen: true })} onCheckOut={handleCheckOutGuest} isManager={currentUser?.role !== 'Staff'} />;
       case 'accounting': return <Accounting transactions={transactions} guests={[]} rooms={[]} />;
-      case 'guests': return <GuestList guests={guests} rooms={rooms} transactions={transactions} history={history} dnrRecords={dnrRecords} onAddGuest={handleAddGuest} onUpdateGuest={handleUpdateGuest} onAddPayment={handleAddPayment} onCheckOut={handleCheckOutGuest} onAddDNR={loadData} onDeleteDNR={loadData} userRole={currentUser?.role || 'Staff'} />;
+      case 'guests': return <GuestList guests={guests} rooms={rooms} transactions={transactions} history={history} dnrRecords={dnrRecords} sentEmails={sentEmails} onAddGuest={handleAddGuest} onUpdateGuest={handleUpdateGuest} onAddPayment={handleAddPayment} onCheckOut={handleCheckOutGuest} onAddDNR={loadData} onDeleteDNR={loadData} userRole={currentUser?.role || 'Staff'} />;
       case 'staff': return <StaffList staff={staff} attendanceLogs={attendanceLogs} currentUserId={currentUser?.id} userRole={currentUser?.role || 'Staff'} onAddStaff={loadData} onDeleteStaff={loadData} onUpdateStatus={loadData} onAttendanceAction={handleAttendanceAction} onUpdateAttendanceLog={handleUpdateAttendanceLog} />;
       case 'maintenance': return <MaintenancePanel tickets={maintenance} rooms={rooms} userRole={currentUser?.role || 'Staff'} onAddTicket={loadData} onResolveTicket={loadData} />;
-      case 'documents': return <DocumentCenter documents={documents} onAddDocument={loadData} onDeleteDocument={loadData} userRole={currentUser?.role || 'Staff'} />;
+      case 'documents': return <DocumentCenter documents={documents} onAddDocument={loadAta} onDeleteDocument={loadData} userRole={currentUser?.role || 'Staff'} />;
       case 'features': return <FeatureRequestPanel requests={featureRequests} onAddRequest={loadData} onUpdateRequest={loadData} onDeleteRequest={loadData} userRole={currentUser?.role || 'Staff'} userName={currentUser?.name || ''} />;
       case 'settings': return <Settings onDataReset={handleDataReset} userRole={currentUser?.role || 'Staff'} />;
       default: return <div>View not implemented</div>;

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { MaintenanceTicket, UserRole, Room } from '../types';
 import { Wrench, Plus, CheckCircle2, AlertTriangle, Clock, X, DollarSign, Calendar } from 'lucide-react';
+import { shouldSendEmail } from '../services/geminiService';
+import { sendMaintenanceRequestEmail } from '../services/emailService';
 
 interface MaintenancePanelProps {
   tickets: MaintenanceTicket[];
   rooms: Room[];
   userRole: UserRole;
-  onAddTicket: (ticket: Omit<MaintenanceTicket, 'id' | 'status' | 'date'>) => void;
+  onAddTicket: (ticket: Omit<MaintenanceTicket, 'id' | 'status' | 'date'>) => Promise<void>;
   onResolveTicket: (id: string, cost: number, notes: string) => void;
 }
 
@@ -14,29 +16,64 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [resolveTicketId, setResolveTicketId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'Active' | 'Resolved'>('Active');
+  const [isSending, setIsSending] = useState(false); // To prevent double submission
 
   // Add Form State
   const [newTicket, setNewTicket] = useState({
     roomNumber: '',
     description: '',
     priority: 'Medium' as 'Low' | 'Medium' | 'High',
-    reportedBy: userRole === 'Contractor' ? 'Contractor' : 'Staff' // Default
+    reportedBy: userRole === 'Contractor' ? 'Contractor' : 'Staff'
   });
 
   // Resolve Form State
   const [resolveCost, setResolveCost] = useState('');
   const [resolveNote, setResolveNote] = useState('');
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onAddTicket({
-      roomNumber: newTicket.roomNumber,
-      description: newTicket.description,
-      priority: newTicket.priority,
-      reportedBy: newTicket.reportedBy
-    });
-    setIsAddModalOpen(false);
-    setNewTicket({ roomNumber: '', description: '', priority: 'Medium', reportedBy: 'Staff' });
+    if (isSending) return;
+
+    setIsSending(true);
+    try {
+      const ticketData = {
+        roomNumber: newTicket.roomNumber,
+        description: newTicket.description,
+        priority: newTicket.priority,
+        reportedBy: newTicket.reportedBy,
+      };
+
+      // This is the local state update
+      await onAddTicket(ticketData);
+
+      // --- AI Email Logic ---
+      const documentText = `New Maintenance Request:\nRoom: ${ticketData.roomNumber}\nPriority: ${ticketData.priority}\nDescription: ${ticketData.description}`;
+      const emailDecision = await shouldSendEmail(documentText);
+
+      if (emailDecision.sendEmail && emailDecision.to === 'maintenance') {
+        console.log('AI decided to send a maintenance email.');
+        // The sendMaintenanceRequestEmail now uses Firestore, so we need to give it the ticket data again.
+        // It will construct its own body for the firestore document.
+        const mockTicket: MaintenanceTicket = { 
+          ...ticketData, 
+          id: `temp-${Date.now()}`,
+          status: 'Pending',
+          date: new Date().toISOString()
+        };
+        await sendMaintenanceRequestEmail(mockTicket);
+        console.log('Maintenance email queued successfully via Firestore.');
+      }
+      // -- End AI Logic --
+
+      setIsAddModalOpen(false);
+      setNewTicket({ roomNumber: '', description: '', priority: 'Medium', reportedBy: 'Staff' });
+
+    } catch (error) {
+      console.error("Error submitting ticket or sending email:", error);
+      // Optionally, show an error to the user
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleResolveSubmit = (e: React.FormEvent) => {
@@ -48,6 +85,7 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
       setResolveNote('');
     }
   };
+
 
   const displayedTickets = tickets.filter(t => 
     filter === 'Active' ? t.status !== 'Resolved' : t.status === 'Resolved'
@@ -233,8 +271,8 @@ const MaintenancePanel: React.FC<MaintenancePanelProps> = ({ tickets, rooms, use
               </div>
 
               <div className="pt-2">
-                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold shadow-sm">
-                   Submit Ticket
+                 <button type="submit" disabled={isSending} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold shadow-sm disabled:opacity-50">
+                   {isSending ? 'Submitting...' : 'Submit Ticket'}
                  </button>
               </div>
             </form>

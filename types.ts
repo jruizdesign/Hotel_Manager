@@ -102,6 +102,16 @@ export interface StoredDocument {
   guestId?: string; // Optional link to guest
 }
 
+export interface SentEmail {
+  id: string;
+  guestId: string;
+  date: string;
+  to: string;
+  subject: string;
+  body: string;
+  type: 'Invoice' | 'Receipt' | 'Marketing' | 'Notification' | 'Other';
+}
+
 export interface FeatureRequest {
   id: string;
   title: string;

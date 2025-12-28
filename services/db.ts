@@ -1,5 +1,5 @@
 import Dexie, { Table } from 'dexie';
-import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest, AttendanceLog, DNRRecord } from '../types';
+import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest, AttendanceLog, DNRRecord, SentEmail } from '../types';
 
 export class StaySyncDatabase extends Dexie {
   rooms!: Table<Room>;
@@ -12,6 +12,7 @@ export class StaySyncDatabase extends Dexie {
   documents!: Table<StoredDocument>;
   features!: Table<FeatureRequest>;
   dnr!: Table<DNRRecord>;
+  emails!: Table<SentEmail>;
   settings!: Table<AppSettings & { id: string }>;
 
   constructor() {
@@ -19,7 +20,7 @@ export class StaySyncDatabase extends Dexie {
     
     // Define schema
     // We only index properties we might want to query by specifically in the future
-    (this as any).version(5).stores({
+    (this as any).version(6).stores({
       rooms: 'id, number, status, type',
       guests: 'id, roomNumber, status, name',
       maintenance: 'id, roomNumber, status',
@@ -29,7 +30,8 @@ export class StaySyncDatabase extends Dexie {
       history: 'id, guestId, checkIn',
       documents: 'id, category, date',
       features: 'id, status, priority, submittedBy',
-      dnr: 'id, name, dateAdded', // New Table
+      dnr: 'id, name, dateAdded',
+      emails: 'id, guestId, date, type', // New Table
       settings: 'id' // Singleton store
     });
   }

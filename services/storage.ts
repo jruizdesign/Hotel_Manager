@@ -1,4 +1,4 @@
-import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest, AttendanceLog, DNRRecord } from '../types';
+import { Room, Guest, MaintenanceTicket, Staff, Transaction, BookingHistory, AppSettings, StoredDocument, FeatureRequest, AttendanceLog, DNRRecord, SentEmail } from '../types';
 import { MOCK_ROOMS, MOCK_GUESTS, MOCK_MAINTENANCE, MOCK_STAFF, MOCK_TRANSACTIONS, MOCK_HISTORY } from '../constants';
 import { db } from './db';
 import { initializeFirebase, getFirebaseDB, getFirebaseStorage } from './firebase';
@@ -150,6 +150,8 @@ export const StorageService = {
   saveTransactions: (transactions: Transaction[]) => StorageService.saveData(db.transactions, transactions, 'transactions'),
   getDocuments: (): Promise<StoredDocument[]> => StorageService.getOrSeedData(db.documents, [], 'documents'),
   saveDocuments: (documents: StoredDocument[]) => StorageService.saveData(db.documents, documents, 'documents'),
+  getSentEmails: (): Promise<SentEmail[]> => StorageService.getOrSeedData(db.emails, [], 'emails'),
+  saveSentEmails: (emails: SentEmail[]) => StorageService.saveData(db.emails, emails, 'emails'),
   getFeatureRequests: (): Promise<FeatureRequest[]> => StorageService.getOrSeedData(db.features, [], 'features'),
   saveFeatureRequests: (features: FeatureRequest[]) => StorageService.saveData(db.features, features, 'features'),
   getDNRRecords: (): Promise<DNRRecord[]> => StorageService.getOrSeedData(db.dnr, [], 'dnr'),
@@ -184,7 +186,8 @@ export const StorageService = {
       db.history.clear(),
       db.documents.clear(),
       db.features.clear(),
-      db.dnr.clear()
+      db.dnr.clear(),
+      db.emails.clear(),
     ]);
   },
 
@@ -196,12 +199,12 @@ export const StorageService = {
     const all = await Promise.all([
       db.rooms.toArray(), db.guests.toArray(), db.maintenance.toArray(), db.staff.toArray(), 
       db.attendance.toArray(), db.transactions.toArray(), db.history.toArray(), db.documents.toArray(),
-      db.features.toArray(), db.dnr.toArray()
+      db.features.toArray(), db.dnr.toArray(), db.emails.toArray(),
     ]);
 
     return {
       version: '4.0', timestamp: new Date().toISOString(),
-      data: { staysync_rooms: all[0], staysync_guests: all[1], staysync_maintenance: all[2], staysync_staff: all[3], staysync_attendance: all[4], staysync_transactions: all[5], staysync_history: all[6], staysync_documents: all[7], staysync_features: all[8], staysync_dnr: all[9] }
+      data: { staysync_rooms: all[0], staysync_guests: all[1], staysync_maintenance: all[2], staysync_staff: all[3], staysync_attendance: all[4], staysync_transactions: all[5], staysync_history: all[6], staysync_documents: all[7], staysync_features: all[8], staysync_dnr: all[9], staysync_emails: all[10] }
     };
   },
 

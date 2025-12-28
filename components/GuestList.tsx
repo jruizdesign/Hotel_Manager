@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Guest, UserRole, BookingHistory, Room, Transaction, RoomStatus, DNRRecord } from '../types';
+import { Guest, UserRole, BookingHistory, Room, Transaction, DNRRecord, SentEmail } from '../types';
 import { 
-  Users, Plus, X, Search, Star, AlertCircle, History, 
-  DollarSign, CheckCircle2, Ban, LogOut, Mail, Sparkles, 
-  Send, ChevronRight, RefreshCw, Phone, AlertTriangle, FileText, ArrowLeft,
-  Receipt
+  Users, Plus, X, Search, Star, History, 
+  DollarSign, Ban, LogOut, Mail, Sparkles, 
+  Send, ChevronRight, ArrowLeft,
+  Receipt, RefreshCw, FileText, Briefcase, MailCheck
 } from 'lucide-react';
 import { generateAIResponse } from '../services/geminiService';
+import { sendCustomEmail } from '../services/emailService';
 
 interface GuestListProps {
   guests: Guest[];
@@ -14,6 +15,7 @@ interface GuestListProps {
   transactions: Transaction[];
   history?: BookingHistory[];
   dnrRecords?: DNRRecord[];
+  sentEmails?: SentEmail[];
   onAddGuest: (guest: Omit<Guest, 'id'>) => boolean;
   onUpdateGuest: (guest: Guest) => void;
   onAddPayment: (guestId: string, amount: number, date: string, note: string) => void;
@@ -28,14 +30,13 @@ interface GuestListProps {
   onClearExternalRequest?: () => void;
 }
 
-const API_URL = 'http://localhost:3000'; 
-
 const GuestList: React.FC<GuestListProps> = ({ 
   guests, 
   rooms,
   transactions,
   history = [], 
   dnrRecords = [],
+  sentEmails = [],
   onAddGuest, 
   onUpdateGuest,
   onAddPayment,
@@ -47,6 +48,7 @@ const GuestList: React.FC<GuestListProps> = ({
   onClearExternalRequest 
 }) => {
   const [activeTab, setActiveTab] = useState<'directory' | 'dnr'>('directory');
+  const [detailTab, setDetailTab] = useState<'profile' | 'emails'>('profile');
   const [selectedGuestId, setSelectedGuestId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -81,6 +83,7 @@ const GuestList: React.FC<GuestListProps> = ({
   );
 
   const getGuestTransactions = (guestId: string) => transactions.filter(t => t.guestId === guestId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const getGuestEmails = (guestId: string) => sentEmails.filter(e => e.guestId === guestId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   useEffect(() => {
     if (externalBookingRequest?.isOpen) {
@@ -93,6 +96,12 @@ const GuestList: React.FC<GuestListProps> = ({
       if (onClearExternalRequest) onClearExternalRequest();
     }
   }, [externalBookingRequest, onClearExternalRequest]);
+
+  useEffect(() => {
+    if (selectedGuestId) {
+      setDetailTab('profile'); // Reset to profile tab when guest changes
+    }
+  }, [selectedGuestId]);
 
   const resetBookingForm = () => {
     setFormData({ name: '', email: '', phone: '', roomNumber: '', checkIn: '', checkOut: '', vip: false, status: 'Reserved', balance: 0 });
@@ -130,6 +139,7 @@ const GuestList: React.FC<GuestListProps> = ({
   const generateEmailDraft = async (topic: string) => {
     if (!selectedGuest) return;
     setIsGeneratingAI(true);
+    setDetailTab('profile'); // Switch to profile to show the composer
     const context = `Guest: ${selectedGuest.name}, Room: ${selectedGuest.roomNumber}, Balance: $${selectedGuest.balance}`;
     const prompt = `Write a professional email for a hotel guest. Context: ${context}. Topic: ${topic}. Output: Only the email content (Subject, Body).`;
     const response = await generateAIResponse(prompt, context);
@@ -139,17 +149,40 @@ const GuestList: React.FC<GuestListProps> = ({
     setIsGeneratingAI(false);
   };
 
-  const sendEmail = async () => {
+  const handleSendEmail = async () => {
     if (!selectedGuest?.email) return;
     setIsSendingEmail(true);
     try {
-      const response = await fetch(`${API_URL}/send-email`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: selectedGuest.email, subject: emailSubject, body: emailBody }) });
-      if (response.ok) {
+      const success = await sendCustomEmail(selectedGuest.email, emailSubject, emailBody);
+      if (success) {
         alert("Email sent successfully!");
-        setEmailSubject(''); setEmailBody(''); setAiPrompt('');
-      } else { alert("Failed to send email."); }
-    } catch (e) { console.error(e); alert("Error sending email.");
-    } finally { setIsSendingEmail(false); }
+        // This part needs to be handled in App.tsx to update the main state
+        // For now, we just clear the form
+        setEmailSubject('');
+        setEmailBody('');
+        setAiPrompt('');
+      } else {
+        alert("Failed to send email.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error sending email.");
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+  
+  const handleResendEmail = async (email: SentEmail) => {
+    setIsSendingEmail(true);
+    try {
+      await sendCustomEmail(email.to, `[RESEND] ${email.subject}`, email.body);
+      alert('Email resent successfully!');
+    } catch (error) {
+      console.error("Failed to resend email:", error);
+      alert('Failed to resend email.');
+    } finally {
+      setIsSendingEmail(false);
+    }
   };
 
   const renderGuestList = () => (
@@ -192,6 +225,7 @@ const GuestList: React.FC<GuestListProps> = ({
     }
 
     const historyItems = history.filter(h => h.guestId === selectedGuest.id);
+    const emailItems = getGuestEmails(selectedGuest.id);
     const hasBalance = selectedGuest.balance > 0;
 
     return (
@@ -210,7 +244,6 @@ const GuestList: React.FC<GuestListProps> = ({
                     </h2>
                     <div className="flex flex-col md:flex-row md:gap-4 text-sm text-slate-500 mt-1">
                       <span className="flex items-center gap-1"><Mail size={14} /> {selectedGuest.email}</span>
-                      <span className="flex items-center gap-1"><Phone size={14} /> {selectedGuest.phone}</span>
                     </div>
                   </div>
                </div>
@@ -221,90 +254,108 @@ const GuestList: React.FC<GuestListProps> = ({
                  </button>
                )}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mt-4">
-               <div className="p-3 bg-slate-50 rounded-lg"><p className="text-[10px] uppercase font-bold text-slate-400">Room</p><p className="font-mono font-bold text-base md:text-lg text-slate-800">{selectedGuest.roomNumber}</p></div>
-               <div className="p-3 bg-slate-50 rounded-lg col-span-2 md:col-span-1"><p className="text-[10px] uppercase font-bold text-slate-400">Dates</p><p className="font-medium text-xs md:text-sm text-slate-800">{new Date(selectedGuest.checkIn).toLocaleDateString()} - {selectedGuest.checkOut ? new Date(selectedGuest.checkOut).toLocaleDateString() : 'Present'}</p></div>
-               <div className={`p-3 rounded-lg border ${hasBalance ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'}`}><p className="text-[10px] uppercase font-bold text-slate-400">Balance</p><p className={`font-bold text-base md:text-lg ${hasBalance ? 'text-red-500' : 'text-emerald-600'}`}>${selectedGuest.balance}</p></div>
+            <div className="border-b border-slate-200 -mx-6 px-6">
+              <nav className="flex gap-6">
+                  <button onClick={() => setDetailTab('profile')} className={`py-3 text-sm font-bold ${detailTab === 'profile' ? 'text-emerald-600 border-b-2 border-emerald-500' : 'text-slate-500'}`}>Profile</button>
+                  <button onClick={() => setDetailTab('emails')} className={`py-3 text-sm font-bold ${detailTab === 'emails' ? 'text-emerald-600 border-b-2 border-emerald-500' : 'text-slate-500'}`}>Email History</button>
+              </nav>
             </div>
          </div>
 
-         <div className="flex-1 p-4 md:p-6 space-y-6 text-sm">
-            <section className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
-               <h3 className="font-bold text-indigo-900 flex items-center gap-2 mb-3"><Sparkles size={16} /> AI Communicator</h3>
-               {!emailBody ? (
-                 <div className="space-y-3">
-                    <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2">
-                       <button onClick={() => generateEmailDraft("Welcome")} className="whitespace-nowrap px-3 py-1.5 bg-white border rounded-full text-xs hover:bg-indigo-50">👋 Welcome</button>
-                       {hasBalance && <button onClick={() => generateEmailDraft("Payment reminder")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-red-200 text-red-700 rounded-full text-xs hover:bg-red-50">💸 Reminder</button>}
-                       <button onClick={() => generateEmailDraft("Feedback request")} className="whitespace-nowrap px-3 py-1.5 bg-white border rounded-full text-xs hover:bg-indigo-50">⭐ Feedback</button>
-                    </div>
-                    <div className="relative">
-                       <input type="text" placeholder="Or type your own prompt..." className="w-full pl-3 pr-10 py-2 bg-white border rounded-lg text-sm" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && generateEmailDraft(aiPrompt)} />
-                       <button onClick={() => generateEmailDraft(aiPrompt)} disabled={isGeneratingAI || !aiPrompt} className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 text-white rounded-md"><Sparkles size={16} /></button>
-                    </div>
-                 </div>
-               ) : (
-                 <div className="animate-in fade-in">
-                    <input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full font-bold bg-transparent border-b py-1" />
-                    <textarea rows={5} value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full mt-2 text-slate-600 bg-slate-50/80 rounded-lg p-2" />
-                    <div className="flex gap-2 mt-2">
-                       <button onClick={() => { setEmailBody(''); setEmailSubject(''); }} className="flex-1 py-2 text-slate-500 text-sm font-medium">Discard</button>
-                       <button onClick={sendEmail} disabled={!selectedGuest.email || isSendingEmail} className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm flex justify-center items-center gap-2"><Send size={16} /> Send</button>
-                    </div>
-                 </div>
-               )}
-            </section>
-
-            <section>
-              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Receipt size={16} className="text-slate-400" /> Billing</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <form onSubmit={handlePaymentSubmit} className="space-y-3">
-                    <input type="number" step="0.01" min="0" placeholder="Amount" required className="w-full p-2 border rounded-lg" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
-                    <input type="text" placeholder="Payment Note (e.g. Cash)" className="w-full p-2 border rounded-lg" value={paymentNote} onChange={e => setPaymentNote(e.target.value)} />
-                    <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><DollarSign size={14}/> Log Payment</button>
-                 </form>
-                 <div className="bg-slate-50 rounded-lg p-3 border max-h-40 overflow-y-auto">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">History</h4>
-                    <div className="space-y-2">
-                       {getGuestTransactions(selectedGuest.id).map(t => (
-                         <div key={t.id} className="flex justify-between items-center text-xs">
-                           <span className="flex items-center gap-2"><CheckCircle2 size={12} className="text-emerald-500" />{t.description}</span>
-                           <span className="font-mono font-bold text-emerald-600">-${t.amount}</span>
-                         </div>
-                       ))}
-                       {getGuestTransactions(selectedGuest.id).length === 0 && <p className="text-xs text-slate-400 italic">No payments logged.</p>}
-                    </div>
-                 </div>
-              </div>
-            </section>
-            
-            {historyItems.length > 0 && (
-              <section>
-                 <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><History size={16} className="text-slate-400" /> Stay History</h3>
-                 <div className="space-y-2">
-                   {historyItems.map(h => (
-                     <div key={h.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border text-sm">
-                        <span>{h.checkIn} — {h.checkOut}</span>
-                        <div className="flex gap-4 text-slate-500"><span>Room {h.roomNumber}</span><span className="font-mono">${h.totalAmount}</span></div>
-                     </div>
-                   ))}
-                 </div>
+         {detailTab === 'profile' ? (
+            <div className="flex-1 p-4 md:p-6 space-y-6 text-sm">
+              <section className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
+                <h3 className="font-bold text-indigo-900 flex items-center gap-2 mb-3"><Sparkles size={16} /> AI Communicator</h3>
+                {!emailBody ? (
+                  <div className="space-y-3">
+                      <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2">
+                        <button onClick={() => generateEmailDraft("Welcome")} className="whitespace-nowrap px-3 py-1.5 bg-white border rounded-full text-xs hover:bg-indigo-50">👋 Welcome</button>
+                        {hasBalance && <button onClick={() => generateEmailDraft("Payment reminder")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-red-200 text-red-700 rounded-full text-xs hover:bg-red-50">💸 Reminder</button>}
+                        <button onClick={() => generateEmailDraft("Feedback request")} className="whitespace-nowrap px-3 py-1.5 bg-white border rounded-full text-xs hover:bg-indigo-50">⭐ Feedback</button>
+                      </div>
+                  </div>
+                ) : (
+                  <div className="animate-in fade-in">
+                      <input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full font-bold bg-transparent border-b py-1" />
+                      <textarea rows={5} value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full mt-2 text-slate-600 bg-slate-50/80 rounded-lg p-2" />
+                      <div className="flex gap-2 mt-2">
+                        <button onClick={() => { setEmailBody(''); setEmailSubject(''); }} className="flex-1 py-2 text-slate-500 text-sm font-medium">Discard</button>
+                        <button onClick={handleSendEmail} disabled={!selectedGuest.email || isSendingEmail} className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm flex justify-center items-center gap-2"><Send size={16} /> Send</button>
+                      </div>
+                  </div>
+                )}
               </section>
+
+              <section>
+                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Receipt size={16} className="text-slate-400" /> Billing</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <form onSubmit={handlePaymentSubmit} className="space-y-3">
+                      <input type="number" step="0.01" min="0" placeholder="Amount" required className="w-full p-2 border rounded-lg" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
+                      <input type="text" placeholder="Payment Note (e.g. Cash)" className="w-full p-2 border rounded-lg" value={paymentNote} onChange={e => setPaymentNote(e.target.value)} />
+                      <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2"><DollarSign size={14}/> Log Payment</button>
+                  </form>
+                  <div className="bg-slate-50 rounded-lg p-3 border max-h-40 overflow-y-auto">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">History</h4>
+                      <div className="space-y-2">
+                        {getGuestTransactions(selectedGuest.id).map(t => (
+                          <div key={t.id} className="flex justify-between items-center text-xs">
+                            <span className="flex items-center gap-2"><FileText size={12} className="text-slate-500" />{t.description}</span>
+                            <span className="font-mono font-bold text-emerald-600">-${t.amount}</span>
+                          </div>
+                        ))}
+                        {getGuestTransactions(selectedGuest.id).length === 0 && <p className="text-xs text-slate-400 italic">No payments logged.</p>}
+                      </div>
+                  </div>
+                </div>
+              </section>
+              
+              {historyItems.length > 0 && (
+                <section>
+                  <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><History size={16} className="text-slate-400" /> Stay History</h3>
+                  <div className="space-y-2">
+                    {historyItems.map(h => (
+                      <div key={h.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border text-sm">
+                          <span>{h.checkIn} — {h.checkOut}</span>
+                          <div className="flex gap-4 text-slate-500"><span>Room {h.roomNumber}</span><span className="font-mono">${h.totalAmount}</span></div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+         ) : (
+          <div className="flex-1 p-4 md:p-6 space-y-4">
+            {emailItems.length > 0 ? (
+              emailItems.map(email => (
+                <div key={email.id} className="bg-slate-50/70 border border-slate-200 rounded-lg p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-bold text-slate-800 text-sm">{email.subject}</p>
+                      <p className="text-xs text-slate-500">To: {email.to} on {new Date(email.date).toLocaleString()}</p>
+                    </div>
+                    <button onClick={() => handleResendEmail(email)} disabled={isSendingEmail} className="p-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg flex items-center gap-2">
+                      <RefreshCw size={14}/> Resend
+                    </button>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <p className="text-xs text-slate-600 whitespace-pre-wrap">{email.body}</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-12 text-slate-500">
+                <MailCheck size={32} className="mx-auto mb-2" />
+                <p>No emails have been sent to this guest yet.</p>
+              </div>
             )}
-         </div>
+          </div>
+         )}
       </div>
     );
   };
 
   return (
     <div className="h-full flex flex-col space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-         <div className="bg-white p-4 rounded-xl border shadow-sm"><p className="text-xs text-slate-500 uppercase font-bold">Guests</p><p className="text-2xl font-bold">{guests.length}</p></div>
-         <div className="bg-white p-4 rounded-xl border shadow-sm"><p className="text-xs text-slate-500 uppercase font-bold">Arrivals</p><p className="text-2xl font-bold text-blue-600">{guests.filter(g => g.checkIn === new Date().toISOString().split('T')[0]).length}</p></div>
-         <div className="bg-white p-4 rounded-xl border shadow-sm"><p className="text-xs text-slate-500 uppercase font-bold">Departures</p><p className="text-2xl font-bold text-amber-500">{guests.filter(g => g.checkOut === new Date().toISOString().split('T')[0]).length}</p></div>
-         <div className="bg-white p-4 rounded-xl border shadow-sm"><p className="text-xs text-slate-500 uppercase font-bold">Balances</p><p className="text-2xl font-bold text-red-500">{guests.filter(g => g.balance > 0).length}</p></div>
-      </div>
-
       <div className="flex flex-col md:flex-row items-center justify-between gap-3">
          <div className="flex gap-4 self-start">
              <button onClick={() => setActiveTab('directory')} className={`text-sm font-bold pb-1 ${activeTab === 'directory' ? 'text-slate-800 border-b-2' : 'text-slate-400'}`}>Directory</button>
@@ -326,17 +377,17 @@ const GuestList: React.FC<GuestListProps> = ({
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold flex items-center gap-2"><Ban className="text-red-500" /> Do Not Rent List</h3>
-              <button onClick={() => setIsDNRModalOpen(true)} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Add</button>
+              {userRole !== 'Staff' && <button onClick={() => setIsDNRModalOpen(true)} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Add</button>}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredDNR.map(record => (
                 <div key={record.id} className="border rounded-lg p-4 flex gap-4 items-start">
-                   {record.photo ? <img src={record.photo} className="w-16 h-16 rounded-lg object-cover" /> : <div className="w-16 h-16 rounded-lg bg-slate-100"></div>}
+                   {record.photo ? <img src={record.photo} className="w-16 h-16 rounded-lg object-cover" /> : <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center"><Briefcase/></div>}
                    <div>
                       <p className="font-bold">{record.name}</p>
                       <p className="text-xs text-red-500 font-bold uppercase">{record.reason}</p>
                       <p className="text-xs text-slate-500 mt-1">{record.notes}</p>
-                      {onDeleteDNR && <button onClick={() => onDeleteDNR(record.id)} className="text-xs text-slate-400 hover:text-red-500 mt-1 underline">Remove</button>}
+                      {userRole !== 'Staff' && onDeleteDNR && <button onClick={() => onDeleteDNR(record.id)} className="text-xs text-slate-400 hover:text-red-500 mt-1 underline">Remove</button>}
                    </div>
                 </div>
               ))}

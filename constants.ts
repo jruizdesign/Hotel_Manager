@@ -1,4 +1,4 @@
-import { BookingHistory, Guest, MaintenanceTicket, Room, RoomStatus, RoomType, Staff, Transaction } from "./types";
+import { BookingHistory, Guest, MaintenanceTicket, Room, RoomStatus, RoomType, Staff, Transaction, StaffStatus } from "./types";
 
 export const MOCK_ROOMS: Room[] = [
   { id: '101', number: '101', type: RoomType.SINGLE, status: RoomStatus.AVAILABLE, price: 120 },
@@ -29,9 +29,9 @@ export const MOCK_MAINTENANCE: MaintenanceTicket[] = [
 
 // Generic Demo Staff - Used only for Offline Demo Mode
 export const MOCK_STAFF: Staff[] = [
-  { id: 's0', name: 'Demo Admin', email: 'admin@hotel.com', role: 'Superuser', status: 'On Duty', shift: 'Any', pin: '0000' },
-  { id: 's1', name: 'Demo Manager', email: 'manager@hotel.com', role: 'Manager', status: 'On Duty', shift: 'Morning', pin: '1234' },
-  { id: 's2', name: 'Front Desk', email: 'reception@hotel.com', role: 'Reception', status: 'On Duty', shift: 'Morning', pin: '1111' },
+  { id: 's0', name: 'Demo Admin', email: 'admin@hotel.com', role: 'Superuser', status: StaffStatus.ON_DUTY, shift: 'Any', pin: '0000' },
+  { id: 's1', name: 'Demo Manager', email: 'manager@hotel.com', role: 'Manager', status: StaffStatus.ON_DUTY, shift: 'Morning', pin: '1234' },
+  { id: 's2', name: 'Front Desk', email: 'reception@hotel.com', role: 'Reception', status: StaffStatus.ON_DUTY, shift: 'Morning', pin: '1111' },
 ];
 
 export const MOCK_TRANSACTIONS: Transaction[] = [

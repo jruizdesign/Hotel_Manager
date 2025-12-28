@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Staff, AttendanceLog, AttendanceAction, UserRole } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Staff, AttendanceLog, AttendanceAction, UserRole, StaffStatus } from '../types';
 import { Briefcase, UserPlus, X, Trash2, CheckCircle, Lock, Clock, Coffee, LogIn, LogOut, History, CalendarClock, Filter, Calendar, User, Mail, Edit3, Save, AlertCircle, Plus } from 'lucide-react';
 import * as db from '../services/db';
 
@@ -17,6 +17,7 @@ const StaffList: React.FC<StaffListProps> = ({
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'roster' | 'attendance'>('roster');
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
   
   // Filter States
   const [filterDate, setFilterDate] = useState<string>('');
@@ -32,11 +33,11 @@ const StaffList: React.FC<StaffListProps> = ({
     email: '',
     role: 'Reception',
     shift: 'Morning',
-    status: 'Off Duty', // Default is Off Duty
+    status: StaffStatus.OFF_DUTY,
     pin: ''
   });
 
-  const [manualLog, setManualLog] = useState({
+  const [manualLog, setManualLog] = useState<Omit<AttendanceLog, 'id'>>({
     staffId: '',
     action: 'CLOCK_IN' as AttendanceAction,
     timestamp: new Date().toISOString().slice(0, 16),
@@ -45,18 +46,30 @@ const StaffList: React.FC<StaffListProps> = ({
 
   const isManager = currentUser.role === 'Manager' || currentUser.role === 'Superuser';
 
+  const fetchAttendance = async () => {
+      if(isManager) {
+          setAttendanceLogs(await db.getAttendanceLogs());
+      }
+  }
+
+  useEffect(() => {
+    fetchAttendance();
+  }, [isManager]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await db.addStaff(newStaff);
     await onUpdate();
+    fetchAttendance();
     setIsModalOpen(false);
-    setNewStaff({ name: '', email: '', role: 'Reception', shift: 'Morning', status: 'Off Duty', pin: '' });
+    setNewStaff({ name: '', email: '', role: 'Reception', shift: 'Morning', status: StaffStatus.OFF_DUTY, pin: '' });
   };
 
   const handleManualLogSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // The function call should be here
+    await db.addAttendanceLog(manualLog);
     await onUpdate();
+    fetchAttendance();
     setIsManualModalOpen(false);
     setManualLog({ staffId: '', action: 'CLOCK_IN', timestamp: new Date().toISOString().slice(0, 16), notes: '' });
   };
@@ -66,18 +79,33 @@ const StaffList: React.FC<StaffListProps> = ({
     setEditTimestamp(new Date(log.timestamp).toISOString().slice(0, 16));
   };
 
-  const handleSaveEdit = async (log: AttendanceLog) => {
-    // The function call should be here
+  const handleSaveEdit = async (logId: string) => {
+    await db.updateAttendanceLog(logId, new Date(editTimestamp).toISOString());
     await onUpdate();
+    fetchAttendance();
     setEditingLogId(null);
   };
 
   const getFilteredLogs = () => {
-    // Mocked data for now
-    return [];
+    let logs = [...attendanceLogs];
+
+    if (filterDate) {
+        logs = logs.filter(log => new Date(log.timestamp).toLocaleDateString() === new Date(filterDate).toLocaleDateString());
+    }
+
+    if (filterStaffId !== 'All') {
+        logs = logs.filter(log => log.staffId === filterStaffId);
+    }
+
+    return logs;
   };
 
   const filteredLogs = getFilteredLogs();
+
+  const getStaffName = (staffId: string) => {
+      const staffMember = staff.find(s => s.id === staffId);
+      return staffMember ? staffMember.name : 'Unknown Staff';
+  }
 
   const getTimeClockUI = () => {
     if (!currentUser) return null;
@@ -184,12 +212,12 @@ const StaffList: React.FC<StaffListProps> = ({
                     {isManager ? (
                        <select 
                          value={s.status}
-                         onChange={async (e) => { await db.updateStaffStatus(s.id, e.target.value as any); await onUpdate(); }}
+                         onChange={async (e) => { await db.updateStaffStatus(s.id, e.target.value as StaffStatus); await onUpdate(); }}
                          className="bg-transparent font-medium text-slate-700 outline-none w-full cursor-pointer hover:text-emerald-600"
                        >
-                         <option value="On Duty">On Duty</option>
-                         <option value="Off Duty">Off Duty</option>
-                         <option value="Break">Break</option>
+                         <option value={StaffStatus.ON_DUTY}>On Duty</option>
+                         <option value={StaffStatus.OFF_DUTY}>Off Duty</option>
+                         <option value={StaffStatus.BREAK}>Break</option>
                        </select>
                     ) : (
                        <span className={`font-medium`}>
@@ -277,16 +305,16 @@ const StaffList: React.FC<StaffListProps> = ({
                             <>{new Date(log.timestamp).toLocaleDateString()} | {new Date(log.timestamp).toLocaleTimeString()}</>
                           )}
                        </td>
-                       <td className="px-6 py-4 font-medium text-slate-800">{/* Add staff name here */}</td>
+                       <td className="px-6 py-4 font-medium text-slate-800">{getStaffName(log.staffId)}</td>
                        <td className="px-6 py-4">
                           <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase`}>
-                             {/* Add action here */}
+                             {log.action.replace('_', ' ')}
                           </span>
                        </td>
-                       <td className="px-6 py-4 text-xs italic text-slate-400">{/* Add notes here */}</td>
+                       <td className="px-6 py-4 text-xs italic text-slate-400">{log.notes}</td>
                        <td className="px-6 py-4 text-right">
                           {editingLogId === log.id ? (
-                             <button onClick={() => handleSaveEdit(log)} className="text-emerald-600 hover:text-emerald-700 p-2"><Save size={16}/></button>
+                             <button onClick={() => handleSaveEdit(log.id)} className="text-emerald-600 hover:text-emerald-700 p-2"><Save size={16}/></button>
                           ) : (
                              <button onClick={() => handleStartEdit(log)} className="text-slate-400 hover:text-blue-600 p-2"><Edit3 size={16}/></button>
                           )}

@@ -59,12 +59,18 @@ export interface MaintenanceTicket {
   completedDate?: string;
 }
 
+export enum StaffStatus {
+  ON_DUTY = 'On Duty',
+  OFF_DUTY = 'Off Duty',
+  BREAK = 'Break'
+}
+
 export interface Staff {
   id: string;
   name: string;
   email?: string; 
   role: 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
-  status: 'On Duty' | 'Off Duty' | 'Break';
+  status: StaffStatus;
   shift: string;
   pin: string; 
 }
@@ -74,7 +80,6 @@ export type AttendanceAction = 'CLOCK_IN' | 'CLOCK_OUT' | 'START_BREAK' | 'END_B
 export interface AttendanceLog {
   id: string;
   staffId: string;
-  staffName: string;
   action: AttendanceAction;
   timestamp: string; 
   notes?: string;

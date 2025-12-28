@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Initialize the client with the API key from the environment variable.
 const genAI = new GoogleGenerativeAI(process.env.API_KEY || '');

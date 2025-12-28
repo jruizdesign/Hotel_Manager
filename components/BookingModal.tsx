@@ -6,9 +6,10 @@ interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onBook: (guest: Omit<Guest, 'id'>) => boolean;
+  initialRoomNumber?: string;
 }
 
-const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook }) => {
+const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook, initialRoomNumber }) => {
   const [formData, setFormData] = useState<Omit<Guest, 'id'>>({
     name: '',
     email: '',
@@ -17,7 +18,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook }) 
     checkOut: '',
     vip: false,
     status: 'Reserved',
-    balance: 0
+    balance: 0,
+    roomNumber: '',
   });
   const [isIndefinite, setIsIndefinite] = useState(false);
 
@@ -31,21 +33,26 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook }) 
             checkOut: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0],
             vip: false,
             status: 'Reserved',
-            balance: 0
+            balance: 0,
+            roomNumber: initialRoomNumber || '',
         });
         setIsIndefinite(false);
     }
-  }, [isOpen]);
+  }, [isOpen, initialRoomNumber]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const dataToSubmit: Omit<Guest, 'id'> = { ...formData };
-    
-    delete (dataToSubmit as Partial<Omit<Guest, 'id'>>).roomNumber;
 
     if (isIndefinite || (formData.vip && !formData.checkOut)) {
       delete dataToSubmit.checkOut;
     }
+    
+    if (!dataToSubmit.roomNumber) {
+        alert("Please assign a room number for the reservation.");
+        return;
+    }
+
     if (onBook(dataToSubmit)) {
       onClose();
     } else {
@@ -65,6 +72,20 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook }) 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <input required placeholder="Guest Name" className="w-full col-span-2" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+            
+            <div className="col-span-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Room Number</label>
+                <input 
+                    required 
+                    placeholder="Enter room number" 
+                    className="w-full"
+                    value={formData.roomNumber || ''} 
+                    onChange={e => setFormData({ ...formData, roomNumber: e.target.value })}
+                    readOnly={!!initialRoomNumber}
+                    style={{ backgroundColor: initialRoomNumber ? '#f3f4f6' : 'white' }}
+                />
+            </div>
+            
             <input required placeholder="Email" type="email" className="w-full" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
             <input required placeholder="Phone" className="w-full" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
 

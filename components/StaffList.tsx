@@ -7,7 +7,7 @@ import * as db from '../services/db';
 interface StaffListProps {
   staff: Staff[];
   onUpdate: () => Promise<void>;
-  currentUser: { email: string; role: UserRole };
+  currentUser: { id?: string, email: string; role: UserRole };
 }
 
 const StaffList: React.FC<StaffListProps> = ({ 
@@ -55,6 +55,24 @@ const StaffList: React.FC<StaffListProps> = ({
   useEffect(() => {
     fetchAttendance();
   }, [isManager]);
+
+  const handleTimeClockAction = async (action: AttendanceAction) => {
+    if (!currentUser.id) return;
+
+    let newStatus: StaffStatus = StaffStatus.ON_DUTY;
+    if (action === 'CLOCK_OUT') newStatus = StaffStatus.OFF_DUTY;
+    if (action === 'START_BREAK') newStatus = StaffStatus.BREAK;
+    if (action === 'END_BREAK') newStatus = StaffStatus.ON_DUTY;
+
+    await db.addAttendanceLog({ 
+        staffId: currentUser.id, 
+        action, 
+        timestamp: new Date().toISOString() 
+    });
+    await db.updateStaffStatus(currentUser.id, newStatus);
+    await onUpdate();
+    fetchAttendance();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,7 +126,16 @@ const StaffList: React.FC<StaffListProps> = ({
   }
 
   const getTimeClockUI = () => {
-    if (!currentUser) return null;
+    if (!currentUser || !currentUser.id) return null;
+
+    const self = staff.find(s => s.id === currentUser.id);
+    if (!self) return null;
+
+    const statusColor = {
+      [StaffStatus.ON_DUTY]: 'text-emerald-500',
+      [StaffStatus.OFF_DUTY]: 'text-slate-400',
+      [StaffStatus.BREAK]: 'text-amber-500',
+    }[self.status];
 
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 animate-in fade-in slide-in-from-top-4">
@@ -118,13 +145,24 @@ const StaffList: React.FC<StaffListProps> = ({
                  <Clock className="text-emerald-600" /> Time Clock
                </h3>
                <p className="text-sm text-slate-500">
-                 Current Status: <span className={`font-bold`}>{/* Add dynamic status here */}</span>
+                 Current Status: <span className={`font-bold ${statusColor}`}>{self.status}</span>
                </p>
                <p className="text-xs text-slate-400 mt-1">{new Date().toLocaleString()}</p>
             </div>
 
             <div className="flex gap-3">
-               {/* Add dynamic buttons here */}
+                {self.status === StaffStatus.OFF_DUTY && (
+                    <button onClick={() => handleTimeClockAction('CLOCK_IN')} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><LogIn size={16}/> Clock In</button>
+                )}
+                {self.status === StaffStatus.ON_DUTY && (
+                    <>
+                        <button onClick={() => handleTimeClockAction('START_BREAK')} className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Coffee size={16}/> Start Break</button>
+                        <button onClick={() => handleTimeClockAction('CLOCK_OUT')} className="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><LogOut size={16}/> Clock Out</button>
+                    </>
+                )}
+                {self.status === StaffStatus.BREAK && (
+                    <button onClick={() => handleTimeClockAction('END_BREAK')} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><CheckCircle size={16}/> End Break</button>
+                )}
             </div>
          </div>
       </div>

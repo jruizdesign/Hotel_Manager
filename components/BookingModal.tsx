@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Calendar, DollarSign, BedDouble, Vip } from 'lucide-react';
+import { X, UserPlus, Calendar, DollarSign, BedDouble, Star } from 'lucide-react';
 import { Guest } from '../types';
 
 interface BookingModalProps {
@@ -92,7 +92,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook, in
                     <div className="flex flex-col gap-2">
                         <label className="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" checked={!!formData.vip} onChange={e => setFormData({ ...formData, vip: e.target.checked })} />
-                            <Vip size={18} className="text-yellow-500"/>
+                            <Star size={18} className="text-yellow-500"/>
                             <span className="font-medium text-slate-700">Mark as VIP Guest</span>
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer">

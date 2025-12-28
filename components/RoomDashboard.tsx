@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Room, Guest, RoomStatus } from '../types';
+import { Room, Guest, RoomStatus, RoomType } from '../types';
 import { BedDouble, Wind, User, BadgePercent, PlusCircle, Pencil, Search, SlidersHorizontal } from 'lucide-react';
 
 interface RoomDashboardProps {

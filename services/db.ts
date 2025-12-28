@@ -50,6 +50,35 @@ export function addGuest(arg0: Guest, arg1: string) {
     throw new Error('Function not implemented.');
 }
 
+export async function addMaintenanceTicket(ticket: Omit<MaintenanceTicket, 'id' | 'status' | 'date'>) {
+  const newTicket = {
+    ...ticket,
+    id: crypto.randomUUID(),
+    status: 'Pending' as const,
+    date: new Date().toISOString(),
+  };
+  await db.maintenance.add(newTicket);
+}
+
+export async function resolveMaintenanceTicket(id: string, cost: number, note: string) {
+  await db.maintenance.update(id, { 
+    status: 'Resolved', 
+    cost: cost, 
+    completedDate: new Date().toISOString() 
+  });
+  // Optionally, add a transaction for the cost
+  if (cost > 0) {
+    await db.transactions.add({
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      category: 'Maintenance Cost',
+      amount: cost,
+      description: `Repairs for ticket ${id}: ${note}`,
+      type: 'Expense',
+    });
+  }
+}
+
 export function getMaintenanceTickets(): import("react").SetStateAction<MaintenanceTicket[]> | PromiseLike<import("react").SetStateAction<MaintenanceTicket[]>> {
     throw new Error('Function not implemented.');
 }

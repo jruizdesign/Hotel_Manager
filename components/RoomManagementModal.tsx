@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
-import { Room, RoomType } from '../types';
+import { Room, RoomType, RoomStatus } from '../types';
 
 interface RoomManagementModalProps {
   isOpen: boolean;
@@ -67,7 +67,7 @@ const RoomManagementModal: React.FC<RoomManagementModalProps> = ({
           number: `${bulk.floorPrefix}${i.toString().padStart(2, '0')}`,
           type: bulk.type,
           price: bulk.price,
-          status: 'Available'
+          status: RoomStatus.AVAILABLE
         });
       }
       await onSave(newRooms);

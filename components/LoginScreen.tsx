@@ -72,7 +72,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
   };
 
   const attemptLogin = (user: Staff) => {
-    let appRole: UserRole = 'Staff';
+    let appRole: UserRole = 'Staff'
     if (user.role === 'Superuser') appRole = 'Superuser';
     else if (user.role === 'Manager') appRole = 'Manager';
     else if (user.role === 'Maintenance') appRole = 'Contractor';

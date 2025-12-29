@@ -69,7 +69,7 @@ export interface Staff {
   id: string;
   name: string;
   email?: string; 
-  role: 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance';
+  role: 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance' | 'Reception';
   status: StaffStatus;
   shift: string;
   pin: string; 

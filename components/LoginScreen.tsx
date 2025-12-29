@@ -86,7 +86,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
       id: user.id,
       name: user.name,
       role: appRole,
-      avatarInitials: initials
+      avatarInitials: initials,
+      email: user.email || '',
     });
   };
 
@@ -122,7 +123,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
             id: 'cloud-admin',
             name: result.user.displayName || authenticatedEmail.split('@')[0],
             role: 'Superuser',
-            avatarInitials: 'AD'
+            avatarInitials: 'AD',
+            email: result.user.email || authenticatedEmail,
         });
       }
     } catch (err: any) {

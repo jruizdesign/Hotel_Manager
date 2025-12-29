@@ -137,7 +137,7 @@ export interface DNRRecord {
   dateAdded: string;
 }
 
-export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings' | 'reports' | 'check-in-out';
+export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'Staff' | 'accounting' | 'documents' | 'features' | 'settings' | 'reports' | 'check-in-out';
 
 export type UserRole = 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance' | 'Contractor' | 'Staff';
 

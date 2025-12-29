@@ -16,8 +16,8 @@ interface GuestListProps {
   history?: BookingHistory[];
   dnrRecords?: DNRRecord[];
   sentEmails?: SentEmail[];
-  onAddGuest: (guest: Omit<Guest, 'id'>) => boolean;
-  onUpdateGuest: (guest: Guest) => void;
+  onAddGuest: (guest: Omit<Guest, 'id'>) => Promise<boolean>;
+  onUpdateGuest: (guest: Partial<Guest>) => void;
   onAddPayment: (guestId: string, amount: number, date: string, note: string) => void;
   onCheckOut: (roomId: string) => void;
   onAddDNR?: (record: Omit<DNRRecord, 'id' | 'dateAdded'>) => void;
@@ -107,9 +107,9 @@ const GuestList: React.FC<GuestListProps> = ({
     setFormData({ name: '', email: '', phone: '', roomNumber: '', checkIn: '', checkOut: '', vip: false, status: 'Reserved', balance: 0 });
   };
 
-  const handleBookingSubmit = (e: React.FormEvent) => {
+  const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (onAddGuest(formData)) {
+    if (await onAddGuest(formData)) {
       setIsBookingModalOpen(false);
       resetBookingForm();
     } else {
@@ -377,7 +377,7 @@ const GuestList: React.FC<GuestListProps> = ({
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold flex items-center gap-2"><Ban className="text-red-500" /> Do Not Rent List</h3>
-              {userRole !== 'Staff' && <button onClick={() => setIsDNRModalOpen(true)} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Add</button>}
+              {userRole === 'Superuser' && <button onClick={() => setIsDNRModalOpen(true)} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Add</button>}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredDNR.map(record => (
@@ -387,7 +387,7 @@ const GuestList: React.FC<GuestListProps> = ({
                       <p className="font-bold">{record.name}</p>
                       <p className="text-xs text-red-500 font-bold uppercase">{record.reason}</p>
                       <p className="text-xs text-slate-500 mt-1">{record.notes}</p>
-                      {userRole !== 'Staff' && onDeleteDNR && <button onClick={() => onDeleteDNR(record.id)} className="text-xs text-slate-400 hover:text-red-500 mt-1 underline">Remove</button>}
+                      {userRole === 'Superuser' && onDeleteDNR && <button onClick={() => onDeleteDNR(record.id)} className="text-xs text-slate-400 hover:text-red-500 mt-1 underline">Remove</button>}
                    </div>
                 </div>
               ))}
@@ -423,7 +423,7 @@ const GuestList: React.FC<GuestListProps> = ({
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
            <div className="bg-white rounded-xl w-full max-w-md">
               <div className="p-4 bg-red-600 text-white"><h3 className="font-bold">Block List Entry</h3></div>
-              <form onSubmit={(e) => { e.preventDefault(); onAddDNR({ ...dnrForm }); setIsDNRModalOpen(false); setDnrForm({name:'',reason:'',notes:'',photo:''}); }} className="p-6 space-y-4">
+              <form onSubmit={(e) => { e.preventDefault(); if(onAddDNR) { onAddDNR({ ...dnrForm }); } setIsDNRModalOpen(false); setDnrForm({name:'',reason:'',notes:'',photo:''}); }} className="p-6 space-y-4">
                  <input required placeholder="Name" value={dnrForm.name} onChange={e => setDnrForm({...dnrForm, name: e.target.value})} />
                  <input required placeholder="Reason" value={dnrForm.reason} onChange={e => setDnrForm({...dnrForm, reason: e.target.value})} />
                  <textarea placeholder="Notes" rows={3} value={dnrForm.notes} onChange={e => setDnrForm({...dnrForm, notes: e.target.value})} />

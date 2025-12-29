@@ -6,7 +6,7 @@ import { DollarSign, BedDouble, Users, AlertTriangle, TrendingDown } from 'lucid
 interface DashboardProps {
   rooms: Room[];
   guests: Guest[];
-  maintenance: MaintenanceTicket[];
+  tickets: MaintenanceTicket[];
   transactions: Transaction[];
 }
 
@@ -22,7 +22,7 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.El
   </div>
 );
 
-const Dashboard: React.FC<DashboardProps> = ({ rooms, guests, maintenance, transactions }) => {
+const Dashboard: React.FC<DashboardProps> = ({ rooms, guests, tickets, transactions }) => {
   const totalRevenue = transactions
     .filter(t => t.type === 'Income')
     .reduce((acc, curr) => acc + curr.amount, 0);
@@ -33,7 +33,7 @@ const Dashboard: React.FC<DashboardProps> = ({ rooms, guests, maintenance, trans
 
   const occupiedRooms = rooms.filter(r => r.status === RoomStatus.OCCUPIED).length;
   const occupancyRate = rooms.length > 0 ? Math.round((occupiedRooms / rooms.length) * 100) : 0;
-  const activeTickets = maintenance.filter(m => m.status !== 'Resolved').length;
+  const activeTickets = tickets.filter(m => m.status !== 'Resolved').length;
 
   // Prepare Dynamic Revenue Chart Data (Last 7 Days)
   const revenueData = useMemo(() => {

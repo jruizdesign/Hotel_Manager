@@ -16,18 +16,21 @@ import SetupWizard from './components/SetupWizard';
 import TerminalAuth from './components/TerminalAuth';
 import BookingModal from './components/BookingModal';
 import RoomManagementModal from './components/RoomManagementModal';
-import GuestDetailsModal from './components/GuestDetailsModal';
 import { 
     Room, Guest, MaintenanceTicket, Staff, Transaction, StoredDocument, 
-    FeatureRequest, DNRRecord, ViewState, CurrentUser, AppSettings
+    FeatureRequest, DNRRecord, ViewState, CurrentUser, AppSettings,
+    RoomStatus,
+    RoomType, BookingHistory, SentEmail
 } from './types';
 import * as db from './services/db';
+import { Menu } from 'lucide-react';
 
 const App: React.FC = () => {
     const [view, setView] = useState<ViewState>('dashboard');
     const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
     const [isSetupComplete, setIsSetupComplete] = useState<boolean | null>(null);
     const [showTerminalAuth, setShowTerminalAuth] = useState(false);
+    const [isMobileNavOpen, setMobileNavOpen] = useState(false);
 
     const [rooms, setRooms] = useState<Room[]>([]);
     const [guests, setGuests] = useState<Guest[]>([]);
@@ -38,44 +41,48 @@ const App: React.FC = () => {
     const [featureRequests, setFeatureRequests] = useState<FeatureRequest[]>([]);
     const [dnrList, setDnrList] = useState<DNRRecord[]>([]);
     const [settings, setSettings] = useState<AppSettings | null>(null);
+    const [bookingHistory, setBookingHistory] = useState<BookingHistory[]>([]);
+    const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
 
     // Modal States
     const [isBookingModalOpen, setBookingModalOpen] = useState(false);
     const [isRoomManagementModalOpen, setRoomManagementModalOpen] = useState(false);
-    const [isGuestDetailsModalOpen, setGuestDetailsModalOpen] = useState(false);
-    const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
     const [selectedRoomForBooking, setSelectedRoomForBooking] = useState<string | undefined>(undefined);
     const [editingRoom, setEditingRoom] = useState<Partial<Room> | null>(null);
 
-    const fetchData = useCallback(async () => {
+    const fetchInitialData = useCallback(async () => {
+        const setupDone = await db.isSetupComplete();
+        setIsSetupComplete(setupDone);
+        if(setupDone) {
+            const storedSettings = await db.getSettings();
+            setSettings(storedSettings);
+            // Always fetch staff list for PIN login
+            setStaff(await db.getStaff());
+        }
+    }, []);
+
+    const fetchLoggedInData = useCallback(async () => {
         if (!currentUser) return;
         setRooms(await db.getRooms());
         setGuests(await db.getGuests());
         setMaintenanceTickets(await db.getMaintenanceTickets());
-        setStaff(await db.getStaff());
         setTransactions(await db.getTransactions());
         setDocuments(await db.getDocuments());
         setFeatureRequests(await db.getFeatureRequests());
         setDnrList(await db.getDNRList());
+        // setBookingHistory(await db.getHistory());
+        setSentEmails(await db.getSentEmails());
     }, [currentUser]);
 
     useEffect(() => {
-        const checkSetup = async () => {
-            const setupDone = await db.isSetupComplete();
-            setIsSetupComplete(setupDone);
-            if(setupDone) {
-                const storedSettings = await db.getSettings();
-                setSettings(storedSettings);
-            }
-        };
-        checkSetup();
-    }, []);
+        fetchInitialData();
+    }, [fetchInitialData]);
 
     useEffect(() => {
         if (currentUser) {
-            fetchData();
+            fetchLoggedInData();
         }
-    }, [currentUser, fetchData]);
+    }, [currentUser, fetchLoggedInData]);
 
     const handleLogin = (user: CurrentUser) => {
         setCurrentUser(user);
@@ -86,76 +93,80 @@ const App: React.FC = () => {
         setView('dashboard');
     };
     
-    const handleSetupComplete = async (newRooms: Omit<Room, 'id' | 'status'>[]) => {
-        await db.addRooms(newRooms as Room[]);
+    const handleSetupComplete = async (rooms: Omit<Room, 'id' | 'status'>[], admin: Omit<Staff, 'id'>) => {
+        const roomsToSave: Room[] = rooms.map(room => ({ ...room, id: crypto.randomUUID(), status: RoomStatus.AVAILABLE }));
+        await db.addRooms(roomsToSave);
+        const newAdmin = await db.addStaff(admin);
         await db.markSetupComplete();
-        const setupDone = await db.isSetupComplete();
-        setIsSetupComplete(setupDone);
-        if(setupDone) {
-            const storedSettings = await db.getSettings();
-            setSettings(storedSettings);
-        }
+        await fetchInitialData(); // Re-fetch initial data to update setup status and staff list
+        handleLogin({ id: newAdmin.id, name: newAdmin.name, role: newAdmin.role, email: newAdmin.email || '' }); // Auto-login the new admin
     };
 
-    // Room Management Handlers
-    const handleOpenRoomManager = (room: Partial<Room> | null = null) => {
-        setEditingRoom(room);
-        setRoomManagementModalOpen(true);
-    };
+    const handleUpdate = useCallback(async () => {
+      // A generic update function that re-fetches all data for the logged-in user
+      await fetchLoggedInData();
+    }, [fetchLoggedInData]);
 
-    const handleSaveRooms = async (newRooms: Partial<Room>[]) => {
-        await db.addRooms(newRooms as Room[]);
-        await fetchData();
-    };
+    // Room Management
+    const handleOpenRoomManager = (room: Partial<Room> | null = null) => { setEditingRoom(room); setRoomManagementModalOpen(true); };
+    const handleSaveRooms = async (newRooms: Partial<Room>[]) => { await db.addRooms(newRooms as Room[]); await handleUpdate(); };
+    const handleUpdateRoom = async (roomUpdate: Partial<Room>) => { if(roomUpdate.id) { await db.updateRoom(roomUpdate.id, roomUpdate); await handleUpdate(); } };
+    const handleDeleteRoom = async (roomId: string) => { await db.deleteRoom(roomId); await handleUpdate(); };
+
+    // Guest Management
+    const handleAddGuest = async (guestData: Omit<Guest, 'id'>) => { const success = await db.addGuest({ ...guestData, id: crypto.randomUUID() } as Guest); if(success) await handleUpdate(); return success; };
+    const handleUpdateGuest = async (guestUpdate: Partial<Guest>) => { if(guestUpdate.id) { await db.updateGuest(guestUpdate.id, guestUpdate); await handleUpdate(); } };
+    const handleCheckOut = async (roomId: string) => { await db.checkOutGuest(roomId); await handleUpdate(); };
+
+    // DNR Management
+    const handleAddDNR = async (record: Omit<DNRRecord, 'id' | 'dateAdded'>) => { await db.addDNR(record); await handleUpdate(); };
+    const handleDeleteDNR = async (id: string) => { await db.deleteDNR(id); await handleUpdate(); };
+
+    // Payment
+    const handleAddPayment = async (guestId: string, amount: number, date: string, note: string) => { await db.addPayment(guestId, amount, date, note); await handleUpdate(); };
     
-    const handleUpdateRoom = async (roomUpdate: Partial<Room>) => {
-        if(roomUpdate.id) {
-            await db.updateRoom(roomUpdate.id, roomUpdate);
-            await fetchData();
-        }
+    // Document Management
+    const handleAddDocument = async (doc: Omit<StoredDocument, 'id' | 'date' | 'size'>) => {
+        const newDocument: Omit<StoredDocument, 'id'> = {
+            ...doc,
+            date: new Date().toISOString(),
+            size: 0 // Placeholder, will be calculated in db service or determined by storage service
+        };
+        await db.addDocument(newDocument as StoredDocument);
+        await handleUpdate();
+    };
+    const handleDeleteDocument = async (id: string) => {
+        await db.deleteDocument(id);
+        await handleUpdate();
     };
 
-    const handleDeleteRoom = async (roomId: string) => {
-        await db.deleteRoom(roomId);
-        await fetchData();
+    // Generic open booking modal
+    const handleOpenBookingModal = (roomNumber?: string) => {
+      setSelectedRoomForBooking(roomNumber);
+      setBookingModalOpen(true);
     };
 
-    // Booking Handlers
-    const handleOpenBookingModal = (roomNumber: string) => {
-        setSelectedRoomForBooking(roomNumber);
-        setBookingModalOpen(true);
-    };
-
-    const handleBookRoom = async (guestData: Omit<Guest, 'id'>): Promise<boolean> => {
-        const success = await db.addGuest(guestData as Guest, guestData.roomNumber || '');
-        if (success) {
-            await fetchData();
-            return true;
-        }
-        return false;
-    };
-
-    // Guest Details Handlers
-    const handleOpenGuestDetails = (guest: Guest) => {
-        setSelectedGuest(guest);
-        setGuestDetailsModalOpen(true);
-    };
 
     const renderView = () => {
         if (!currentUser) return null;
         switch (view) {
-            case 'dashboard': return <Dashboard rooms={rooms} guests={guests} tickets={maintenanceTickets} onNavigate={setView} onBookRoom={handleOpenBookingModal}/>;
-            case 'rooms': return <RoomDashboard rooms={rooms} guests={guests} onBook={handleOpenBookingModal} onEditRoom={(room: Room) => handleOpenRoomManager(room)} onAddNewRoom={() => handleOpenRoomManager(null)} />;
-            case 'guests': return <GuestList guests={guests} onGuestSelect={handleOpenGuestDetails} />;
-            case 'maintenance': return <MaintenancePanel tickets={maintenanceTickets} rooms={rooms} onUpdate={fetchData} />;
-            case 'staff': return <StaffList staff={staff} onUpdate={fetchData} currentUser={currentUser} />;
-            case 'accounting': return <Accounting transactions={transactions} onUpdate={fetchData} guests={guests} rooms={rooms}/>;
-            case 'documents': return <DocumentCenter documents={documents} onUpdate={fetchData} guests={guests}/>;
-            case 'features': return <FeatureRequestPanel requests={featureRequests} onUpdate={fetchData}/>;
-            case 'settings': return <Settings settings={settings} onUpdate={setSettings}/>;
-            case 'reports': return <DailyReport rooms={rooms} guests={guests} transactions={transactions} tickets={maintenanceTickets}/>;
-            case 'check-in-out': return <CheckInCheckOutPanel guests={guests} onUpdate={fetchData}/>;
-            default: return <Dashboard rooms={rooms} guests={guests} tickets={maintenanceTickets} onNavigate={setView} onBookRoom={handleOpenBookingModal}/>;
+            case 'dashboard': return <Dashboard rooms={rooms} guests={guests} tickets={maintenanceTickets} transactions={transactions} />;
+            case 'rooms': return <RoomDashboard rooms={rooms} guests={guests} onBook={handleOpenBookingModal} onEditRoom={handleOpenRoomManager} onAddNewRoom={() => handleOpenRoomManager()} />;
+            case 'guests': return <GuestList 
+                                        guests={guests} rooms={rooms} transactions={transactions} dnrRecords={dnrList} sentEmails={sentEmails}
+                                        onAddGuest={handleAddGuest} onUpdateGuest={handleUpdateGuest as any} onAddPayment={handleAddPayment}
+                                        onCheckOut={handleCheckOut} onAddDNR={handleAddDNR} onDeleteDNR={handleDeleteDNR}
+                                        userRole={currentUser.role} 
+                                     />;
+            case 'maintenance': return <MaintenancePanel tickets={maintenanceTickets} rooms={rooms} onUpdate={handleUpdate} currentUser={currentUser}/>;
+            case 'staff': return <StaffList staff={staff} onUpdate={handleUpdate} currentUser={currentUser} />;
+            case 'accounting': return <Accounting transactions={transactions} onUpdate={handleUpdate} guests={guests} rooms={rooms}/>;
+            case 'documents': return <DocumentCenter documents={documents} onAddDocument={handleAddDocument} onDeleteDocument={handleDeleteDocument} userRole={currentUser.role}/>;
+            case 'features': return <FeatureRequestPanel requests={featureRequests} onAddRequest={async (req) => {await db.addFeatureRequest(req, currentUser.name); await handleUpdate()}} onUpdateRequest={async (req) => {if(req.id) {await db.updateFeatureRequest(req.id, req); await handleUpdate()}}} onDeleteRequest={async (id) => {await db.deleteFeatureRequest(id); await handleUpdate()}} userRole={currentUser.role} userName={currentUser.name}/>;
+            case 'settings': return <Settings onDataReset={handleUpdate} userRole={currentUser.role}/>;
+            case 'reports': return <DailyReport rooms={rooms} guests={guests} transactions={transactions} />;
+            case 'check-in-out': return <CheckInCheckOutPanel guests={guests} rooms={rooms} onUpdateGuest={handleUpdateGuest} onUpdateRoom={handleUpdateRoom} />;
+            default: return <Dashboard rooms={rooms} guests={guests} tickets={maintenanceTickets} transactions={transactions} />;
         }
     };
 
@@ -164,41 +175,45 @@ const App: React.FC = () => {
     }
 
     if (!isSetupComplete) {
-        return <SetupWizard onComplete={handleSetupComplete} />;
-    }
-
-    if (settings?.recaptchaSiteKey && !currentUser) {
-        return <LoginScreen onLogin={handleLogin} recaptchaSiteKey={settings.recaptchaSiteKey}/>
+        return <SetupWizard onSetupComplete={handleSetupComplete} />;
     }
 
     if (!currentUser) {
-        // Fallback login if reCAPTCHA is not configured
-        return <LoginScreen onLogin={handleLogin} />
+        return <LoginScreen onLogin={handleLogin} staff={staff} onCreateAdmin={function (name: string, pin: string): void {
+            throw new Error('Function not implemented.');
+        } } onRegisterStaff={function (staffData: Omit<Staff, 'id' | 'status'>): void {
+            throw new Error('Function not implemented.');
+        } } />
     }
 
     if (showTerminalAuth) {
-        return <TerminalAuth onAuthenticated={() => setShowTerminalAuth(false)} />;
+        return <TerminalAuth />;
     }
     
     return (
         <div className="flex h-screen bg-slate-100 font-sans">
+             <button onClick={() => setMobileNavOpen(true)} className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white/80 backdrop-blur-sm rounded-md shadow">
+                <Menu size={24} />
+            </button>
             <Sidebar 
-                view={view} 
+                currentView={view} 
                 setView={setView} 
-                currentUser={currentUser} 
+                userRole={currentUser.role}
                 onLogout={handleLogout}
-                onTerminalAuth={() => setShowTerminalAuth(true)}
+                onLock={handleLogout} // Using logout to lock
+                isMobileNavOpen={isMobileNavOpen}
+                setMobileNavOpen={setMobileNavOpen}
             />
-            <main className="flex-1 overflow-y-auto">
+            <main className="flex-1 overflow-y-auto p-4 pt-16 md:pt-6 md:pl-72">
                 {renderView()}
             </main>
 
-            {/* MODALS */} 
             <BookingModal 
                 isOpen={isBookingModalOpen}
                 onClose={() => setBookingModalOpen(false)}
-                onBook={handleBookRoom}
+                onBook={handleAddGuest}
                 initialRoomNumber={selectedRoomForBooking}
+                rooms={rooms}
             />
 
             <RoomManagementModal 
@@ -209,13 +224,6 @@ const App: React.FC = () => {
                 onDelete={handleDeleteRoom}
                 existingRoom={editingRoom}
             />
-
-            {selectedGuest && <GuestDetailsModal 
-                isOpen={isGuestDetailsModalOpen}
-                onClose={() => setGuestDetailsModalOpen(false)}
-                guest={selectedGuest}
-                onUpdate={fetchData}
-            />}
         </div>
     );
 };

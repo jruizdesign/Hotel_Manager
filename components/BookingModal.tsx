@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Calendar, DollarSign, BedDouble, Star } from 'lucide-react';
-import { Guest } from '../types';
+import { Guest, Room } from '../types';
 
 interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onBook: (guest: Omit<Guest, 'id'>) => Promise<boolean>;
   initialRoomNumber?: string;
+  rooms: Room[];
 }
 
-const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook, initialRoomNumber }) => {
+const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, onBook, initialRoomNumber, rooms }) => {
   const [formData, setFormData] = useState<Partial<Omit<Guest, 'id'>>>({});
   const [isIndefinite, setIsIndefinite] = useState(false);
 

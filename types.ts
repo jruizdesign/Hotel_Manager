@@ -139,13 +139,13 @@ export interface DNRRecord {
 
 export type ViewState = 'dashboard' | 'rooms' | 'guests' | 'maintenance' | 'staff' | 'accounting' | 'documents' | 'features' | 'settings' | 'reports' | 'check-in-out';
 
-export type UserRole = 'Superuser' | 'Manager' | 'Staff' | 'Contractor';
+export type UserRole = 'Superuser' | 'Manager' | 'Housekeeping' | 'Reception' | 'Maintenance' | 'Contractor';
 
 export interface CurrentUser {
   id?: string; 
   name: string;
   role: UserRole;
-  avatarInitials: string;
+  email: string;
 }
 
 export type DataSource = 'Local' | 'Cloud';

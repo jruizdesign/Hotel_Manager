@@ -573,7 +573,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ staff, onLogin, onCreateAdmin
         <p className="flex items-center justify-center gap-2">
           <Shield size={10} className="text-slate-700" /> StaySync Security Framework v4.2
         </p>
-        <p className="mt-2 opacity-40">Architected by Jason Ruiz • Global Terminal Auth</p>
+        <p className="mt-6 opacity-75">Architected by Jason Ruiz • Global Terminal Auth</p>
       </div>
     </div>
   );
